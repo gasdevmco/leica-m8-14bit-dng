@@ -274,6 +274,23 @@ work/venv/bin/pip install unicorn capstone`). The same harness is the base for t
 - Offsets in S are not verifiable from files. Plan: **metadata-dump canary** — first hooked build
   copies ~256 bytes of job metadata into the junk trailing row; compare with the JPG on the desktop.
 
+## Post-write checks on image files (static, 2026-10-19)
+
+- **None.** CRC32 (0xBD0F4/0xBD15C) is used only by settings (0x21068, 0x21850), the .upd check
+  (0x2387C), the `crcbb` debug command and 0xAFBB4 — not by the save path. No read-back/compare of
+  RAW/JPG/DNG after saving. "Data verify failed after operation" (0xBD8D0) belongs to the flash
+  driver's error table (updates). The SD filesystem (with `Journal.dat`) only reports driver errors
+  (0xA4910: write/read error, disk full, EOF …); the DNG change keeps size and write path identical.
+- Where the camera *does* read our file later: playback. As `.RAW` it is ignored (review shows the
+  JPG). As `.DNG` the camera's DNG reader (0x6DDAC/0x6DB74) parses it and expects the camera's own
+  layout (320×240 thumbnail as IFD0, PixelX/Y, LEICA MakerNote) → run that reader on our DNG in the
+  emulator before changing the extension.
+- Mitigation: we always write the JPG too. Playback very likely shows the JPG of a pair (stock
+  DNG+JPG mode writes the same pairs; in RAW+JPG with B&W JPG the review is B&W). 0x46110 picks the
+  display path per file by extension ("JPG" → 0x46198, "DNG" → 0x460C8); pair grouping in the file
+  list not traced. The DNG reader still runs for a lone DNG (JPG deleted elsewhere) and maybe the
+  info screen ("DNG + %s", 0x47574) — keep the emulator test before the rename.
+
 ## Known 2.024 issue
 
 Some bodies stop saving images after 2.024 (LED blinks, nothing written). Fixed for some
