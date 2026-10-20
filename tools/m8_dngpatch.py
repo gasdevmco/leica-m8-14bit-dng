@@ -153,10 +153,12 @@ STAGES = {
 KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66':
         'stage 1, m8_savetest 32/0; flashed and camera-tested 2026-10-20',
-    '1761dbb907db0dcd32e4685db16e4ad774deca422dfcec72a950c0c30317453e': 'stage 2, m8_savetest 145/0 (2026-10-20); not flashed',
-    '41ea871b477d22f7ba235f96ed69953acb2dc6b33f3e1dfa6cf3fac9c1d15496': 'stage 3, m8_savetest 145/0 (2026-10-20); not flashed',
-    '3b451b4d7da62621179995ba11fa5962f347c7aa9d82e99a9e156e7801ee6e25': 'stage 4, m8_savetest 145/0 (2026-10-20); not flashed',
-    'a9c5f617c0e11e504ddd83289539d733360ce7d2d82bdae17fb54c83dafdac99': 'stage 5, m8_savetest 145/0 (2026-10-20); not flashed',
+    '3b451b4d7da62621179995ba11fa5962f347c7aa9d82e99a9e156e7801ee6e25':
+        'stage 4, first version (date slot S+0x20, wrong); flashed 2026-10-20, Lightroom opens its files',
+    '98011d7b48243917dee3807eda547719a50204f2576bea289d45c5473609a88b': 'stage 2, m8_savetest 145/0 (2026-10-20); not flashed',
+    'c152d30593e52e41ebdb44f1b9573f5a113e5d52e34066d79fc6b48ead2dd526': 'stage 3, m8_savetest 145/0 (2026-10-20); not flashed',
+    '59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c': 'stage 4, date fixed, m8_savetest 145/0 (2026-10-20); not flashed',
+    'd9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66': 'stage 5, date fixed, m8_savetest 145/0 (2026-10-20); not flashed',
 }
 
 

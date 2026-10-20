@@ -50,12 +50,12 @@ DT0 = '0000:00:00 00:00:00'
 # Per-shot slots: (tag, name, type, default, where the camera holds it). Defaults as the camera's
 # metadata init (0x6DF5C). In camera each slot is filled by copying from S; offsets per FINDINGS.
 SHOT_FIELDS = [
-    (306,   'DateTime',          ASCII,     DT0,             'S+0x20'),
+    (306,   'DateTime',          ASCII,     DT0,             'S+0x1C'),
     (33434, 'ExposureTime',      RATIONAL,  [(0, 1)],        'S+0x64'),
     (34850, 'ExposureProgram',   SHORT,     0,               'S+0x60'),
     (34855, 'ISO',               SHORT,     100,             'S+0x62'),
-    (36867, 'DateTimeOriginal',  ASCII,     DT0,             'S+0x20'),
-    (36868, 'DateTimeDigitized', ASCII,     DT0,             'S+0x20'),
+    (36867, 'DateTimeOriginal',  ASCII,     DT0,             'S+0x1C'),
+    (36868, 'DateTimeDigitized', ASCII,     DT0,             'S+0x1C'),
     (37377, 'ShutterSpeedValue', SRATIONAL, [(0, 65536)],    'S+0x6C'),
     (37380, 'ExposureBias',      SRATIONAL, [(0, 65536)],    'S+0x8C'),
     (37381, 'MaxAperture',       RATIONAL,  [(0, 65536)],    'S+0x94'),

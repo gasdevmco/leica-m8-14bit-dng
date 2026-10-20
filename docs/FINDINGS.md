@@ -9,6 +9,18 @@ are marked **[tested]**.
   Update ran normally (progress bar paused around 60%, then completed) and asked for a restart.
   Camera boots normally; SET → Compression lists JPG fine+RAW; selection survives power-off
   and sleep/wake; RAW + JPG files are written and convert with m8raw2dng2.
+- **2026-10-20 [tested]** **Stage 4 (`3b451b4d…`) flashed: the camera writes a 14-bit DNG.**
+  Update and boot normal. `fromcameraimports/L1031916.RAW` (JPG fine+RAW): header `4949 2a00 cc0f
+  4101`; m8_wrapdng.check passes (35 tags); the 902-byte template arrived intact; LibRaw decodes it
+  (RGGB, white 16383, black 92); bottom image rows clean (no cache artefact). Per-shot slots vs the
+  JPG: ExposureTime 2777/1000000, ExposureProgram 3, ISO 160, ShutterSpeedValue, ExposureBias,
+  MaxAperture, FocalLength **all match → those S offsets are confirmed**. **Date wrong**:
+  `:10:21 08:58:15` + 4 stray bytes — the date string is at **job+0x20 (S+0x1C)**, not S+0x20.
+  Fixed in m8_wrapdng.SHOT_FIELDS (3 bytes of the slot table). DNG-mode (L1031918) and JPG files
+  normal.
+  **Lightroom opened the camera-written file** (copy named L1031916.DNG). Burst test on stage 4 not
+  done yet. Corrected builds: stage 4 `59aff4a3…`, stage 5 `d9a94feb…` (differ from the flashed
+  stage 4 only in the three date-slot source bytes 0x24 → 0x20 at 0x28C9A/0x28CBA/0x28CC2).
 - **2026-10-20 [tested]** Continuous-shooting test in JPG fine+RAW until the buffer filled
   (scratch card, on the stage-1 build): passed. Burst files not kept.
 - **2026-10-20 [tested]** Rollback drill, first half: from the patched 2.014 build, flashing stock
@@ -255,10 +267,10 @@ and compares):
 | Stage | Change | File | SHA-256 | Status |
 |---|---|---|---|---|
 | 1 | canary (file bytes 6–7 `07 00` → `a5 00`) | `firmware/patched/m8-2_014-stage1.upd` | `3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66` | emulator pass; **flashed, camera-tested 2026-10-20** |
-| 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `1761dbb907db0dcd32e4685db16e4ad774deca422dfcec72a950c0c30317453e` | emulator 145/0; not flashed |
-| 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `41ea871b477d22f7ba235f96ed69953acb2dc6b33f3e1dfa6cf3fac9c1d15496` | emulator 145/0; not flashed |
-| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `3b451b4d7da62621179995ba11fa5962f347c7aa9d82e99a9e156e7801ee6e25` | emulator 145/0; not flashed |
-| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `a9c5f617c0e11e504ddd83289539d733360ce7d2d82bdae17fb54c83dafdac99` | emulator 145/0; not flashed |
+| 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `98011d7b48243917dee3807eda547719a50204f2576bea289d45c5473609a88b` | emulator 145/0; not flashed |
+| 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `c152d30593e52e41ebdb44f1b9573f5a113e5d52e34066d79fc6b48ead2dd526` | emulator 145/0; not flashed |
+| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` | emulator 145/0; not flashed (first version `3b451b4d…`, date slot wrong, **flashed 2026-10-20: Lightroom opens its files**) |
+| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `d9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66` | emulator 145/0; not flashed |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
 same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the
@@ -350,7 +362,9 @@ stage 3 checks the real offsets on the camera).
   Readers (playback): 0x6CC64 (vtable A) and 0x6DDAC/0x6DB74 (vtable B) — they *get* tags into a
   playback object; not useful for writing.
 - **Metadata struct S** (writer takes it from `[writer+0xB0]`), values already EXIF-ready (the writer
-  copies them straight into tags): +0x20 date "YYYY:MM:DD HH:MM:SS" (20 bytes), +0x60 u16
+  copies them straight into tags): +0x20 date "YYYY:MM:DD HH:MM:SS" (20 bytes) — **in the job copy
+  the date is at job+0x20 = S+0x1C (camera-verified 2026-10-20); the other offsets below are
+  camera-verified as listed**, +0x60 u16
   ExposureProgram, **+0x62 u16 ISO**, **+0x64 ExposureTime (num, den)**, +0x6C ShutterSpeedValue
   (srational, 16.16 APEX), +0x74–0x88 MakerNote values, +0x8C ExposureBias, +0x94 MaxAperture,
   +0xA8 FocalLength; also +0x10/+0x14 thumbnail 320×240, +0xB4 = 500 (BayerGreenSplit).
