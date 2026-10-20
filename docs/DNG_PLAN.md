@@ -217,7 +217,9 @@ scratch-card playback test with our DNG (pair + lone copy) on the current build:
 - Freeze → pull battery, remove card, boot without it. Lone DNG misbehaves → add a small thumbnail
   to the template before stage 5.
 - **Result 2026-10-20:** with our DNG (and RAW) next to the camera's JPG, playback shows the preview
-  normally. Lone-DNG case not yet tested. macOS (Quick Look / sips) also decodes our DNG correctly
+  normally. **Lone DNG (no JPG): no crash; playback shows the filename in the centre instead of a
+  preview** — graceful fallback, acceptable because the camera always writes the JPG alongside.
+  Stage-5 risk retired; an embedded thumbnail is an optional nice-to-have, not required. macOS (Quick Look / sips) also decodes our DNG correctly
   at 3964×2642 (third decoder after Lightroom and LibRaw); Finder icons look dark because the
   scene is mostly dark.
 
