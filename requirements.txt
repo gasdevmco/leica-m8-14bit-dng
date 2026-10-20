@@ -1,0 +1,7 @@
+# Analysis/test tools only; none of these affect bytes that get flashed.
+# Setup: python3 -m venv work/venv && work/venv/bin/pip install -r requirements.txt
+capstone==5.0.9     # disassembler (armtools.py)
+unicorn==2.1.4      # emulator (m8_emutest.py); >=2.0 needed for ctl_set_cpu_model
+numpy==2.5.4        # DNG checks on the desktop
+rawpy==0.27.1       # LibRaw decode of prototype DNGs
+imageio==2.38.1     # preview images

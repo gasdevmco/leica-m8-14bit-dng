@@ -1,0 +1,17 @@
+# Leica firmware is copyrighted: keep it out of git history
+firmware/
+*.upd
+*.UPD
+work/
+__pycache__/
+.DS_Store
+# Personal camera samples (photos, large) and local Python env
+sampleraws/
+.venv/
+*.RAW
+*.raw
+*.DNG
+*.dng
+*.JPG
+*.jpg
+*.BIA

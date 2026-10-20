@@ -1,0 +1,297 @@
+# Leica M8 firmware — findings
+
+Everything below was found by static analysis of the stock update files. Hardware results
+are marked **[tested]**.
+
+## Hardware results
+
+- **2026-10-19 [tested]** Patched 2.014 (`f6589c41…`) flashed on the author's M8 (was stock 2.014).
+  Update ran normally (progress bar paused around 60%, then completed) and asked for a restart.
+  Camera boots normally; SET → Compression lists JPG fine+RAW; selection survives power-off
+  and sleep/wake; RAW + JPG files are written and convert with m8raw2dng2.
+- Pending: continuous-shooting test until the buffer fills (scratch card).
+
+## Stock files
+
+| File | Version | Build date | SHA-256 |
+|---|---|---|---|
+| `firmware/stock/m8-2_014.upd` | 2.014 | 30 May 2011 | `99f5254847a92c68086f37b1a4140c359379801b479df12052136abb73f09ed0` |
+| `firmware/stock/m8-2_024.upd` | 2.024 | 23 Jul 2014 | `95dbb319ba6b2d675437853402a8bbabe8e96796b74a52ed325fa5c8b3f68acb` |
+
+2.014 came from TousLesDrivers (a mirror). It was checked against 2.024: same container
+layout and rules, byte-identical FPGA, M16C, FSL, fonts, frame-line images and
+translations. Of the 859 KB PXA image only 531 bytes differ: build dates, version
+strings, new lens names in 2.024, and one ~400-byte code change at 0xAE8BC.
+
+## Update file format (`.upd`)
+
+- A Doom-style **PWAD** container: `"PWAD"`, lump count, directory offset; 16-byte directory
+  entries (offset, size, 8-byte name). Names may carry junk after the NUL.
+- Unencrypted and uncompressed. **No checksum over the file**; it ends exactly at the last lump.
+- Lumps: `RULES` (XML board-ID rules), `LUTS` (nested PWAD: GAMMA, GAIN, LEICA, BLEMISH,
+  WREF, OBJ = lens table, VERSION), `PXA` (main ARM code), `BF` (Blackfin DSP),
+  `GUI` (nested: TRANS, IMAGES = JPEG frame lines, FONT1, FONT2), `M16C` (body controller,
+  S-records), `FPGA` (Xilinx), `FSL` (first-stage loader).
+- Not in the file: **RedBoot** (main bootloader), per-camera calibration (CCD calib,
+  TWOCHAN, AWB, WREF, BLEMISH, CCDSNR stored in flash with their own CRC32), user settings.
+
+## Updater behaviour (PXA)
+
+- Scans the SD card for `M8.UPD` or `M8-x_yyy.UPD`; if several, picks the highest number.
+- Reads the version string from the file's PXA lump; only rejects 0.0.
+- **No comparison with the installed version** — same-version reinstall and downgrades are allowed
+  (matches owner reports of 2.024 → 2.014 downgrades).
+- Gates: RULES board IDs (ccd 0, ccdboard 0–2, ctrlboard 0, m16c 0), battery level, user confirmation.
+- The SD updater lives in the PXA app → **a PXA that crashes early in boot blocks SD recovery**
+  (RedBoot serial / Leica service would then be needed). Never touch boot/update paths.
+
+## PXA image layout
+
+- Intel XScale (ARMv5TE), ARM mode, load base **0x20000**, image ends at **0xF1BB0**.
+- `.bss` (zeroed) starts at exactly 0xF1BB0 and runs to 0x1837E0; stacks at 0xF1C30–0xF2CB0.
+  → **The image cannot grow.** New code must go into existing space (e.g. unused debug commands).
+- eCos + RedBoot FIS flash filesystem ("fisfs"). Lots of debug strings and a debug shell.
+- Settings: profile records of 0x50 bytes; field base +0x1C; **compression at +0x2C (u16)**.
+  Values: 0 DNG, 1 JPG fine, 2 JPG basic, 3 DNG+JPG fine, 4 DNG+JPG basic, **5 JPG fine+RAW**.
+  Name table at 0xEF5A8.
+- Settings are saved to EEPROM as one 0x400-byte block with a checksum (writer 0x2105C,
+  reader in 0x2184C); no per-field filtering.
+
+## Service mode ("button dance")
+
+- Service flag = RAM word at `[[0xD4220]] + 0x254A0` whose low 24 bits equal **0x010304**,
+  built byte by byte by the key handler at 0x44C68 / 0x44E34; cleared by 0x40410 on a wrong key.
+- Gate function **0x403F0** returns 0 when service mode is active. Its only callers:
+  timing log (0x3D564), the dance handlers (0x44C84, 0x44EB8, 0x44F50, 0x44F60),
+  SET-menu loader (0x4EEC8, 0x4F0C0). **Capture/save code never checks it.**
+- `+0x2558F` byte = "debug menu open" (blocks normal key handling); unrelated to capture.
+
+## Why RAW resets
+
+1. **Boot/wake** — settings loader (0x2184C, after "Could not load Settings from eeprom"):
+   `if compression == 5 → set 1` at 0x21914–0x21978. No service check. *This is the observed reset.*
+2. **SET menu load** (0x4ED94): entry count = 5 normally, 6 in service mode (0x4EED4);
+   case 5 without service mode writes 1 back to the profile (0x4F0C8 → 0x4F104).
+- Menu save routine (0x4E4D4): selecting entry 5 writes 5 (0x4E8C0), no service check.
+
+## Persistent-RAW patch (`tools/m8_rawpatch.py`) — 2.014 build [tested]
+
+Identical code at identical addresses in 2.014 and 2.024 (file offsets differ by 4).
+
+| | Address | Stock | Patched | Effect |
+|---|---|---|---|---|
+| P1 | 0x2191C | `0800000a` beq | `0000a0e1` nop | boot no longer resets RAW |
+| P2 | 0x4F0C8 | `beffff0a` beq | `beffffea` b | SET menu no longer resets RAW |
+| P3 | 0x4EED4 | `0530a013` movne #5 | `0630a013` movne #6 | RAW always listed (no dance) |
+
+`--no-menu` applies P1+P2 only. Output differs from stock in exactly 5 bytes of the PXA lump.
+
+| Patched file | SHA-256 |
+|---|---|
+| `firmware/patched/m8-2_014.upd` | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
+| `firmware/patched/m8-2_024.upd` | `6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e` |
+
+Test plan: full battery, card formatted in camera, only the patched file on it. Select
+JPG fine+RAW, shoot, power-cycle, confirm SET still shows it, convert with m8raw2dng2.
+Once, on a scratch card, test continuous shooting until the buffer fills. Rollback = flash stock.
+
+## Emulator test (`tools/m8_emutest.py`) — 2026-10-19
+
+Unicorn harness that runs the real settings loader (0x21848) and SET-menu loader (0x4ED94)
+from the PXA lump of stock, patched and an in-memory `--no-menu` build of 2.014. Only the
+listed firmware functions execute (defaults 0x20F9C/0x21724–0x21848, crc32 0xBD0B4, gate
+0x403F0, the two loaders); EEPROM read, printf, 0x4568C, OS calls 0xB485C/0xB48A0/0xB48BC,
+menu items 0x9AF4C/0x9AF84 and two menu vtable calls (+0x1C, +0x48) are stubs; any other
+call fails the run. EEPROM blocks are built with the firmware's own defaults and crc32.
+Result: **126 passed, 0 failed**. Swapping stock/patched makes 24 checks fail (sanity check).
+
+- Loader: stock turns compression 5 → 1 (store at 0x21978 executes); patched and no-menu keep 5.
+  Values 0–4 unchanged in all builds. Stock vs patched settings block differs only in the
+  compression byte, with identical call traces (no extra EEPROM writes).
+- Bad CRC or failed read → factory defaults (profile 0, JPG fine) in all builds;
+  read failure prints "Could not load Settings from eeprom".
+- Menu (entries, selected, profile compression after), compression 5:
+  stock (5, 1, 1) / service (6, 5, 5); patched (6, 5, 5) either way; no-menu (5, 5, 5) / service (6, 5, 5).
+- Settings block layout: u16 [0] = profile index, u16 [2] = override index (0xFFFF = use [0]),
+  +8 version (0xC), +0xC crc32 (init 0, no final xor, computed with the field zeroed),
+  +0x10 size (0x1FC), six 0x50-byte profiles at +0x1C. Factory default: [0]=0, [2]=0xFFFF.
+- **Profile 0 is rebuilt from defaults (0x20F9C at 0x21898) on every boot, patched or not**,
+  so RAW (and every other setting) only persists in profiles 1–5. The test camera keeps RAW,
+  so it is presumably not on profile 0; which menu profile maps to index 0 is not yet known.
+
+CPU model: PXA270 (`ctl_set_cpu_model`, MIDR 0x69054110, Intel XScale). Unicorn/QEMU does
+**not** model ARMv5 rotated unaligned LDR (default and PXA270 both return v7-style results), so the
+harness fails any misaligned 2/4/8-byte access instead (stricter than hardware; verified it fires).
+Stock code paths: 126/126 pass, no misaligned accesses.
+
+Run: `work/venv/bin/python tools/m8_emutest.py [-v]` (venv: `python3 -m venv work/venv &&
+work/venv/bin/pip install unicorn capstone`). The same harness is the base for testing DNG code.
+
+## Image save path (static analysis, 2026-10-19) — DNG work Phase 1, in progress
+
+- **0x3CA5C = store routine for every image file** (only reference: pointer at 0xEF110).
+  r7 = capture context, job struct = `[ctx+0x4634]`. File type chosen from job flags:
+  `+0x21A` byte → "BIA", `+0x150`==1 → "DNG" (type 2), `+0x14C`==1 → "JPG" (type 1),
+  `+0x154`==1 → "RAW" (type 0); type stored at `ctx+0x4638`. Extension strings: "RAW" = 0xD6590
+  (tail of `\DCIM\100LEICA\L1000001.RAW`), "BIA" 0xD7CD8, "DNG" 0xD6570, "JPG" 0xD6638.
+  0x8817C builds the file name; **0x90F9C(out, name, size) creates the file with its final size up
+  front** (size from job: RAW +0x16C, DNG +0x164, JPG +0x168).
+- **The 108-byte RAW header is written by PXA CPU code**, 0x3CE48–0x3CF0C, into the output ring
+  buffer: u16 [0]=0xFFFF (`mvn r0,#0` at 0x3CE80 / `strh` 0x3CE94), [1]=0x0C (0x3CE9C), [2]=0x36
+  (0x3CE98), [3]=7 (0x3CEA0), [10]/[11] and [14]/[15] from ctx+0x422C / 0x4228 bytes, [16..18] from
+  job+0x210, bytes 0x2C–0x6B = 64-byte memcpy from `[job]+0xE8`; then commit(0x6C). Matches the sample
+  (65535, 12, 54, 7, …, 87, 10, …, 136, 15, 1). → **Step-1 canary site** (change one immediate).
+- **Output ring buffer** at ctx+0x46C8: 0x3C4AC = get write pointer + contiguous free space;
+  0x3C500 = commit n bytes (handles wrap, signals event via 0xB49A0). Producers: 0x3CA5C (header),
+  0x3C5A8, 0x3C6B4, 0x3C800 (not yet read — likely the pixel-chunk commits; find the last chunk /
+  trailing row here). A separate task drains the buffer to the card.
+- **Pixels: FPGA → SDRAM by PXA DMA.** 0x3BFBC builds two descriptor chains (double buffered):
+  source 0x08000000 (chip select — FPGA sensor interface), target 0xA26F44E0+ in 0x1FE0-byte
+  blocks (DCMD 0xE0031FE0); 0x3C1E0 starts DMA channel 1 (DCSR1 RUN). Data passes through RAM the
+  CPU can access, but the file is **streamed**, not held whole.
+- Implications for the DNG plan:
+  - Header bytes 0–7 → TIFF header: changing immediates alone is not enough (0x4949, 0x2EDC,
+    0x0141 are not ARM immediates); the header block's zero stores could be repacked in place to
+    make room (no reclaimed space needed). To verify.
+  - **IFD placement idea:** the trailing stride row (last 7,952 bytes, ignored junk) could hold the
+    ~750-byte IFD template → file size unchanged, no change to file creation (0x90F9C / job
+    size fields untouched). Needs a hook where the last chunk is committed (0x3C5A8/0x3C6B4/0x3C800).
+- Header fields decoded: u16 [10]/[11] = bytes of `ctx+0x422C` = **2647 rows**; [14]/[15] = bytes
+  of `ctx+0x4228` = **3976 samples/row** (row bytes after `<<1` at 0x3CF18). The "trailing row" is
+  sensor row 2647, delivered in the last DMA block (blocks of 16 rows; 166 blocks, last = 7 rows).
+- **0x3C904 = DMA block-complete handler** (pointer at 0xEF100): re-arms DMA ch.1 for the next
+  block (0x3C1E0) unless last, then dispatches on type `ctx+0x4638`: 0 → **0x3C5A4 RAW producer**
+  (also .BIA — same type 0), 1 → 0x3C7FC (JPG, calls encoder 0x74724), 2 → 0x3C6B0 (8-bit DNG,
+  calls 0x76A3C companding); then block index `ctx+0x4220` += 1; after the last block it finishes
+  the file (0x716F8, vtable +0x18, 0x90F2C).
+- **0x3C5A4 RAW producer**: per block, memcpy from DMA buffer (0x26F44E0 + parity × 0x3E080)
+  into the ring (in pieces limited by free space), commit, kick writer (vtable +0x10). Normal
+  block size `ctx+0x4218`; **last block (idx == `ctx+0x421C`−1) takes a separate branch
+  0x3C688–0x3C6A8** computing size = (rows − idx×16) × row bytes, then `b 0x3C5EC`.
+  → **Hook site for the IFD: 0x3C6A8** (runs once per RAW/BIA file, block DMA already complete):
+  copy template to source + (size − row bytes), i.e. the start of the trailing row, then continue.
+  Gate out .BIA via job flag +0x21A.
+- File extension: "RAW" at 0xD6590 is shared with the debug path string; changing it to "DNG" is a
+  3-byte data change. In JPG fine+RAW mode this gives JPG+DNG pairs like the stock DNG+JPG mode;
+  camera playback/card-scan behaviour with our DNG layout is untested (harness test first).
+- Open: what 0x90F9C returns; the card-writer task; header rewrite at 0x3CE48 to fit the TIFF
+  header (repack zero stores).
+
+## Reclaimable space: debug-shell commands (2026-10-19, `tools/m8_reclaim.py`)
+
+- Two command sets. Core shell (help, msg, ping, mi, ti, si, delay, reset, rbm/rwm/rqm, wbm/wwm/wqm):
+  built at 0x8AA4C — keep (tiny; peek/poke may be useful). Application commands: 94 entries
+  (92 handlers) built by the **C++ static initializer 0x2C9F4(1, 0xFFFF)** into 32-byte RAM
+  entries: +0 name, +8 usage, +0xC description, +0x10/+0x14 (arg counts?), **+0x18 handler**.
+  The tool extracts them by emulating the initializer (completes cleanly with only 0xB48A0 stubbed).
+- Entrance rule: the initializer runs at boot, so **never patch the registration**. Instead keep
+  the handler's first instructions as a stub that returns, and reuse the rest of its body.
+- Reachability scan per handler range (start .. min(next prologue, next handler)): branches,
+  data words, literal-pool reads and pc-relative adds from outside. Update/flash/power/EEPROM/
+  RTC/mount commands are excluded (NEVER) whatever their counts.
+- **Best candidates (0 other refs; name string referenced only by the initializer):**
+  `ldimg` 0x28AB0, 1,620 bytes ("load image from DSP" — the debug RAW/DNG loader);
+  `bf_memtest1` 0x2ABD0, 960 bytes; `writejpgipp` 0x26D98, 760 bytes. `ldimg` alone covers the
+  ~750-byte template + ~160-byte routine.
+- **Ghidra second opinion (12.1.4, headless, 2026-10-19): agrees.** Raw import at 0x20000,
+  ARM:LE:32:v5t, aggressive instruction finder; 2,474 functions; code region 93.4% instructions,
+  4.5% data, 2.0% (14.8 KB) undefined. References into each candidate from outside: exactly 2, both
+  the initializer storing the handler pointer into its entry (`str ip,[fp,#-0x30]` + `stm ip,{r0-r3}`
+  at 0x2DFE8/0x2DFFC ldimg, 0x2CD14/0x2CD34 bf_memtest1, 0x2D148/0x2D160 writejpgipp). Ghidra's
+  function body for ldimg: 0x28AB0–0x29073 (+ literal pool to 0x29104, as in m8_reclaim).
+  Combined coverage: m8_reclaim scans every word raw (cannot miss a direct branch/pointer even in
+  undecoded bytes); Ghidra adds register data-flow. Residual gap: addresses computed arithmetically
+  — covered by the on-camera idle test.
+- Still to do before use: on-camera idle test (region filled, hook off) before enabling.
+
+## Boot order: SD update check vs settings load (2026-10-19, static)
+
+- `.upd` scanner: **0x23100** (looks for "M8.UPD" 0xD46C0 / "M8-%d_%d.UPD" 0xD46C8). Called from
+  0x23320 (← update GUI flow 0x60090 via 0xED08C, "Update failed!", "Could not open Update File!"),
+  0x297D0 (`updatesd` debug cmd), 0x37BAC (card check, ← 0x37E20), 0x5F9E0 (via 0xED084).
+- Startup function **0x35C68** (via 0xEBBE0) reads GPLR2 (0x40E00008) bit 31 = GPIO95 into
+  `[ctx+0x17E54]`. **GPIO95 = 0** → 0x35E20: card check 0x37E20 (→ scanner) *before* the normal init
+  at 0x35CA4; **GPIO95 = 1** → normal init directly. Normal init loads settings (0x21848 at 0x35DA8).
+  GPIO95's meaning is unknown.
+- The update itself (confirmation dialog, flashing in 0x60090) runs in the GUI state machine, i.e.
+  after startup incl. settings load → the updater is *not* independent of stored settings.
+- Settings written to EEPROM (writer 0x2105C) only from: 0x364D4 (event table 0xEF028),
+  0x36B20 (0xEF068) and the `settingsback` debug command (0x25F08).
+- Main camera task event table (0xEEF40–0xEF0E8): 16-byte entries {0, event id, handler, 0}.
+  **Event 0x190 → 0x36B1C (saves settings) = power-state change broadcast**: sent by 0x2407C(state)
+  to three tasks (0x369B0, 0x87520, 0x456C8); power states from the `power` debug command
+  (0x28530 → 0x3DE0C): 0 = on, 1 = standby, 2 = off. Broadcaster callers are power-task handlers
+  (table 0xEEC4C–0xEECBC: events 0x2AFF → 0x245B4, 0x2B00 → 0x24754, …).
+  **Event 0x28AB → 0x364D0 (card check 0x37E20, then saves settings) = GPIO95 changed**: posted by
+  the GPIO interrupt callback 0x31C68 (registered via 0x8D128 with vector 0x7F = 32 + 95; same
+  scheme gives GPIOs 83, 53, 11 for the other callbacks) with the new level, and once at boot when
+  GPIO95 = 0. 0x304F4 polls GPIO95 with a timer (debounce).
+- **GPIO95 is most likely the SD card-detect switch, active low (0 = card inserted)** (debounced,
+  card check on change, boot-time card/.upd scan when 0). Inferred from code, not hardware-tested.
+- So settings are saved to EEPROM on: power off / standby / on transitions, card insert/remove,
+  after a boot with a card inserted, and the `settingsback` debug command. A battery pull saves nothing.
+  → Operating rule after any anomaly: pull the battery first (not the power switch, not the card).
+- Consequence for DNG code: settings block 0x14C910 (main RAM) vs image DMA buffer 0x026F44E0+;
+  new code's writes are range-checked to the DMA buffer, so it cannot reach settings. A crash/freeze
+  → battery pull runs no settings-save handler.
+
+## Per-shot metadata (static, 2026-10-19)
+
+- **EXIF writers** (C++ class, vtable ~0xED8E8–0xED930; tag helper 0x76218(obj, tag, type, count,
+  value), rational/8-byte append 0x76334, blob append 0x76384, ASCII 0x77D2C):
+  0x77EF8 = the camera's own DNG IFD0 writer (NewSubFileType … ExifIFD, DateTimeOriginal,
+  FocalPlane*, TIFF/EP, DNGVersion — matches a camera DNG exactly); 0x77E2C = ExifVersion +
+  DateTimeDigitized; **0x6C630 = EXIF sub-IFD writer**: ExposureTime, ExposureProgram, ISO,
+  ShutterSpeedValue, ExposureBias, MaxAperture, Metering, LightSource, Flash, FocalLength, **Leica
+  MakerNote** (220 bytes, "LEICA" header 0xE1080, Leica tags 0x302–0x340), FileSource, SceneType,
+  WhiteBalance, DigitalZoom, FocalLength35, SceneCapture, ImageUniqueID.
+  Readers (playback): 0x6CC64 (vtable A) and 0x6DDAC/0x6DB74 (vtable B) — they *get* tags into a
+  playback object; not useful for writing.
+- **Metadata struct S** (writer takes it from `[writer+0xB0]`), values already EXIF-ready (the writer
+  copies them straight into tags): +0x20 date "YYYY:MM:DD HH:MM:SS" (20 bytes), +0x60 u16
+  ExposureProgram, **+0x62 u16 ISO**, **+0x64 ExposureTime (num, den)**, +0x6C ShutterSpeedValue
+  (srational, 16.16 APEX), +0x74–0x88 MakerNote values, +0x8C ExposureBias, +0x94 MaxAperture,
+  +0xA8 FocalLength; also +0x10/+0x14 thumbnail 320×240, +0xB4 = 500 (BayerGreenSplit).
+- Date: capture setup 0x33AB8 does time() 0xC0EB4 → localtime 0xC1590 (static tm 0x1827B4) →
+  strftime 0xC05F4 into `[ctx+0x17E30] + 0x20`.
+- **S lives inside the job struct at job+4**: job init 0x3AF88 calls defaults 0x6DF5C(job+4)
+  (ISO 100, …). Per shot, **0x424AC copies the full metadata struct into the job (0x3B8EC) and then
+  posts the job for storage**; callers 0x33640 / 0x35620 (capture flow).
+- Timing: the camera's own DNG/JPG writers emit EXIF at the *start* of their files, so S is complete
+  before storage begins; the DNG hook runs at the *end* of the RAW file → values are available.
+  The store routine already holds the job (`[ctx+0x4634]`), so the hook reaches ISO at job+0x66,
+  ExposureTime at job+0x68, date at job+0x24 etc. with plain loads.
+- To verify with a RAW+JPG pair: one job per shot carries all file flags (RAW+JPG), so the RAW and
+  JPG share S; compare the JPG's EXIF values with these offsets.
+- **Sample pair `sampleraws/L1031902.RAW/.JPG`** (JPG fine+RAW, 2026-10-19 17:32:24): JPG EXIF =
+  ExposureTime 1000/1000000, ExposureProgram 3, ISO 160, ShutterSpeedValue 655360/65536 (APEX 10.0,
+  16.16), ExposureBias 0/65536, MaxAperture 0/65536, Metering 2, Flash 24, FocalLength 0/1000 (no
+  lens data on this shot), WhiteBalance 0, PixelX/Y 3936×2624, ImageUniqueID …070C; MakerNote
+  "LEICA\0\0\0" + 18 tags (0x300–0x340; 0x303 = body serial). JPG EXIF tag order differs
+  from 0x6C630 (adds 0x9101, 0xA001, 0xA401, 0xA408–A; no FocalLength35) → the JPG uses its own
+  writer, same value formats. RAW header identical to L1031901; bytes 0x2C–0x6B (from job+0xE8)
+  are zero again.
+- Offsets in S are not verifiable from files. Plan: **metadata-dump canary** — first hooked build
+  copies ~256 bytes of job metadata into the junk trailing row; compare with the JPG on the desktop.
+
+## Known 2.024 issue
+
+Some bodies stop saving images after 2.024 (LED blinks, nothing written). Fixed for some
+owners by downgrading to 2.014. 2.024 replaced the Blackfin code (build Jan 2008 → May 2010),
+the most likely suspect (unconfirmed). Plan: stay on 2.014.
+
+## Next project: in-camera 14-bit DNG (idea) — full plan in `docs/DNG_PLAN.md`
+
+RAW dump (per m8raw2dng2 docs/PROCESSING.md): 21,049,052 bytes = 54 header u16 + 2,647 rows ×
+3,976 u16 (3,968 active + 8 padding), little-endian, 14-bit. Plan: overwrite the first 8 bytes
+with a TIFF header, append a ~2 KB IFD after the pixels (StripOffset 108, width 3976, DefaultCrop
+hides padding), constant tags (WhiteLevel 16383, BlackLevel 92, CFA, M8 colour matrices copied
+from a real M8 DNG, UniqueCameraModel "M8 Digital Camera"), AsShotNeutral from a WB-preset table,
+per-shot EXIF from the camera's JPG metadata. No pixel processing. Code must fit in reclaimed
+debug-command space, target ARMv5 ARM mode, no VFP. Test in a Unicorn harness before flashing.
+
+## Tooling notes
+
+- Ghidra could not be downloaded in the cloud workspace; analysis used Capstone.
+  On the Mac, Ghidra (ARM:LE:32:v5t, base 0x20000) would speed up the DNG work.
+- Reference: Alex Hude, "How to Hack an Expensive Camera…" (M8 PWAD format, M240 work).
