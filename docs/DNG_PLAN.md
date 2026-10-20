@@ -207,7 +207,7 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
 6. Per stage on the camera: scratch card, full battery, single shots, power cycle, Lightroom
    import, then bursts; after any anomaly pull the battery first.
 
-**Before stage 1 (no new firmware needed):** rollback drill (patched → stock → patched);
+**Before stage 1 (no new firmware needed):** ~~rollback drill~~ (done 2026-10-20);
 scratch-card playback test with our DNG (pair + lone copy) on the current build:
 - Card: scratch card formatted in camera, one throwaway shot (creates `DCIM/100LEICA`). Copy
   `sampleraws/L1031902.JPG` + `L1031902.DNG` (pair) and a copy of the DNG as `L1039999.DNG`
@@ -242,7 +242,7 @@ REA (only from github.com/morluto/rea or npm `rea-agents`) if wanted.
 | Same, with full per-shot metadata (exposure, ISO, date, lens, WB preset) | ~55–65% | **~80%** (was 65% before the metadata trace) |
 | No brick needing Leica/serial | ~95–97% | **~98%** |
 | Bootloader and SD updater untouched | ~99% | **~99%+** |
-| Can always reflash stock from SD | — | **~99%** (patched → stock tested 2026-10-20) |
+| Can always reflash stock from SD | — | **~99%** (round trip patched → stock → patched tested 2026-10-20) |
 
 What moved it: format proven in Lightroom with the exact in-camera layout; save path mapped (CPU
 builds header, memcpy RAW producer, last-block hook, no file-size change); 1.6 KB reclaimable

@@ -11,7 +11,8 @@ are marked **[tested]**.
   and sleep/wake; RAW + JPG files are written and convert with m8raw2dng2.
 - Pending: continuous-shooting test until the buffer fills (scratch card).
 - **2026-10-20 [tested]** Rollback drill, first half: from the patched 2.014 build, flashing stock
-  `firmware/stock/m8-2_014.upd` worked without issue. Pending: reflash patched to complete the round trip.
+  `firmware/stock/m8-2_014.upd` worked without issue; reflashing patched `f6589c41…` also worked,
+  RAW setting back and working. **Round trip complete.**
 
 ## Stock files
 
