@@ -35,8 +35,10 @@ from unicorn import UC_HOOK_MEM_WRITE, UC_MEM_WRITE
 from unicorn.arm_const import UC_ARM_REG_PC
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import m8_asm
 import m8_dngpatch as dp
 import m8_emutest as et
+import m8_wrapdng as wd
 from m8_rawpatch import PXA_BASE
 
 ROOT = et.ROOT
@@ -55,8 +57,11 @@ REAL = [
     (0x90064, 0x9006C),     # returns 0
     (0xB3F78, 0xB40D4),     # memcpy
     (0xCAB28, 0xCAE54),     # unsigned divide / modulo
+    (0x28AB0, dp.TABLES),   # new code (stages 3-5 reach it through the hook)
 ]
 HEADER = dp.REGIONS['header']
+NEW_CODE = (0x28AB0, dp.TABLES)
+TRAIL_OFF = HDR + (ROWS - 1) * ROW_BYTES     # file offset of the trailing sensor row (IFD0)
 DMA_BUF, DMA_PARITY = 0x026F44E0, 0x3E080   # CPU view of the DMA target (phys 0xA26F44E0)
 PHYS = 0xA0000000                            # SDRAM physical base; CPU address = phys - PHYS
 DCSR1, DDADR1, OSCR = 0x40000004, 0x40000210, 0x40A00010
@@ -148,6 +153,13 @@ class SaveEmu(et.Emu):
         self.sensor, self.spos = sensor, 0
         self.chains = []                        # bytes moved per DMA run
         self.hdr_writes = []                    # (address, size, value) written by the header block
+        self.new_writes = []                    # (address, size) written by the new code
+        self.new_entries = 0                    # times dng_hook was entered
+
+    def _code(self, uc, addr, size, _):
+        if addr == dp.HOOK_ENTRY:
+            self.new_entries += 1
+        super()._code(uc, addr, size, _)
 
     def _align(self, uc, access, addr, size, value, _):
         super()._align(uc, access, addr, size, value, _)
@@ -155,6 +167,8 @@ class SaveEmu(et.Emu):
             pc = uc.reg_read(UC_ARM_REG_PC)
             if HEADER[0] <= pc < HEADER[1]:
                 self.hdr_writes.append((addr, size, value & ((1 << 8 * size) - 1)))
+            elif NEW_CODE[0] <= pc < NEW_CODE[1]:
+                self.new_writes.append((addr, size))
 
     def _dma(self, uc, access, addr, size, value, _):
         if not value & 0x80000000:              # RUN
@@ -206,6 +220,7 @@ def save(pxa, raw, policy='eager', bia=False):
     e.w32(JOB + 0x154, 1)
     e.uc.mem_write(JOB + 0x21A, bytes([bia]))
     e.w32(JOB + 0x210, 1)                       # header u16[16..18] (sample: 1, 0, 0)
+    fill_shot(e)
     # message: +8 job, +0xC writer
     e.w32(MSG + 8, JOB)
     e.w32(MSG + 0xC, W)
@@ -219,6 +234,79 @@ def save(pxa, raw, policy='eager', bia=False):
     e.name = e.cstr(NAMEBUF)
     e.done = e.read(CTX + 0x4630, 1)[0]
     return e
+
+
+# Per-shot values for metadata struct S (job+4), at the offsets the slot table assumes: those of
+# the sample pair's JPG. The firmware's real offsets are what stage 3 checks on the camera.
+SHOT = {'DateTime': '0000:00:00 00:00:00', **wd.jpg_shot(os.path.join(ROOT, 'sampleraws/L1031902.JPG'))}
+SHOT.update(DateTimeOriginal=SHOT['DateTime'], DateTimeDigitized=SHOT['DateTime'])
+SETTINGS_PATTERN = bytes(range(256)) * 2        # stands in for the settings block (dump check)
+
+
+def fill_shot(e):
+    for _, name, typ, _, where in wd.SHOT_FIELDS:
+        if where.startswith('S+'):
+            e.uc.mem_write(JOB + 4 + int(where[2:], 16), wd.pack_value(typ, SHOT[name]))
+    e.uc.mem_write(e.u32(et.P_SETTINGS), SETTINGS_PATTERN)
+
+
+def trail_dest(idx):
+    """CPU address of the trailing row in the last block's DMA buffer."""
+    return DMA_BUF + (idx & 1) * DMA_PARITY + (ROWS - idx * 16) * ROW_BYTES - ROW_BYTES
+
+
+def expected(stage, raw, e):
+    """The file each stage must produce from `raw`, computed without the firmware."""
+    pieces = dp.STAGES[stage][1]
+    out = bytearray(raw)
+    if 'canary' in pieces:
+        out[6] = 0xA5
+    if 'ldimg (dump)' in pieces:
+        last = e.blocks - 1
+        ctx = bytearray(e.read(CTX + 0x4210, 0x30))
+        ctx[0x10:0x14] = struct.pack('<I', last)           # block index at hook time
+        dump = (b'M8DUMP01' + bytes(ctx) +
+                struct.pack('<4I', CTX, trail_dest(last), (ROWS - last * 16) * ROW_BYTES, last))
+        dump = dump.ljust(0x80, b'\xEE')                  # 0x48..0x7F untouched (sensor bytes)
+        dump = dump[:0x48] + raw[TRAIL_OFF + 0x48:TRAIL_OFF + 0x80] + e.read(JOB, 0x280) + \
+            e.read(e.u32(et.P_SETTINGS), 0x200)
+        out[TRAIL_OFF:TRAIL_OFF + len(dump)] = dump
+    if 'tiff' in pieces:
+        t, slots = dp.template()
+        shot = {k: v for k, v in SHOT.items() if k in dict(
+            (n, 1) for n, *_ in dp.slot_table())}
+        out = bytearray(wd.wrap(raw, t, slots, shot))
+    return bytes(out)
+
+
+def run_hook(pxa, size, idx, bia=False, row_bytes=ROW_BYTES, rows=ROWS):
+    """Call dng_hook directly as the producer's `bl` would; returns (emu, regs preserved?)."""
+    from unicorn.arm_const import (UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
+                                   UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
+                                   UC_ARM_REG_SP, UC_ARM_REG_LR)
+    e = SaveEmu(pxa, b'')
+    e.w32(CTX + 0x4634, JOB)
+    e.uc.mem_write(JOB + 0x21A, bytes([bia]))
+    e.w32(CTX + 0x4220, idx)
+    e.w32(CTX + 0x4228, row_bytes)
+    e.w32(CTX + 0x422C, rows)
+    fill_shot(e)
+    keep = [UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8, UC_ARM_REG_R9,
+            UC_ARM_REG_R10, UC_ARM_REG_R11, UC_ARM_REG_SP]
+    vals = [CTX, 0x5555, 0x6666, size, 0x8888, 0x9999, 0xAAAA, 0xBBBB, et.STACK + 0xF000]
+    for r, v in zip(keep, vals):
+        e.uc.reg_write(r, v)
+    e.uc.reg_write(UC_ARM_REG_LR, et.SENTINEL + 0xC0)    # dng_hook returns to lr - 0xC0
+    e.uc.emu_start(dp.HOOK_ENTRY, et.SENTINEL, count=100_000)
+    if e.err or e.uc.reg_read(UC_ARM_REG_PC) != et.SENTINEL:
+        raise et.Escape(e.err or 'dng_hook did not return')
+    return e, [e.uc.reg_read(r) for r in keep] == vals
+
+
+def outside(writes, lo, hi):
+    stack = (et.STACK, et.STACK + 0x10000)
+    return [(hex(a), z) for a, z in writes
+            if not (lo <= a and a + z <= hi) and not (stack[0] <= a and a + z <= stack[1])]
 
 
 def branches_into(pxa, lo, hi):
@@ -259,7 +347,7 @@ def main():
         base, new = dp.stage_file(stock_upd, n)          # refuses on a region violation
         builds[f'stage{n}'] = dp.pxa_of(new)
         R.check(f'stage {n} declared regions vs flashed', dp.region_violations(
-            base, new, *dp.find_lump(new, b'PXA'), dp.STAGES[n][1]), [])
+            base, new, *dp.find_lump(new, b'PXA'), dp.stage_regions(n)), [])
     samples = SAMPLES[:1] if quick else SAMPLES
     policies = ['eager'] if quick else list(POLICIES)
     raws = {s: open(os.path.join(ROOT, s), 'rb').read() for s in samples}
@@ -290,37 +378,72 @@ def main():
     R.check('branches/pointers into the header block', [hex(a) for a in branches_into(flashed, *HEADER)],
             ['0x3cd58'])
 
+    R.check('frozen code == reassembled tools/asm sources',
+            (m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_header.s')) == dp.HEADER_TIFF,
+             m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_dnghook.s')) == dp.HOOK_CODE), (True, True))
+    R.check('branches/pointers into the new code (flashed build)',
+            [hex(a) for a in branches_into(flashed, *NEW_CODE)], ['0x2dd48'])
+    bia_ref = save(flashed, raws[samples[0]], 'eager', bia=True)
+
     for n in stages:
         b = f'stage{n}'
         pxa = builds[b]
+        pieces = dp.STAGES[n][1]
+        hooked = 'hook' in pieces
         print(f'Stage {n}: {dp.STAGES[n][0]}')
         R.check(f'{b} branches/pointers into the header block',
                 [hex(a) for a in branches_into(pxa, *HEADER)], ['0x3cd58'])
+        R.check(f'{b} branches/pointers into the new code',
+                [hex(a) for a in branches_into(pxa, *NEW_CODE)], ['0x2dd48'] + ['0x3c6a8'] * hooked)
+        ext = b'DNG' if 'ext' in pieces else b'RAW'
         for s, raw in raws.items():
             for pol in policies if s == samples[0] else ['eager']:
                 e = save(pxa, raw, pol)
-                out = bytes(e.writer.out)
-                diff = [(s0, out[s0:e0].hex(), raw[s0:e0].hex()) for s0, e0 in dp.changed_ranges(out, raw)] \
-                    if len(out) == len(raw) else 'size'
-                want = {1: [(6, 'a5', '07')]}[n]
-                R.check(f'{b} {os.path.basename(s)} {pol:6s} file vs camera file: differences', diff, want)
+                out, want = bytes(e.writer.out), expected(n, raw, e)
+                diff = dp.changed_ranges(out, want) if len(out) == len(want) else 'size'
+                R.check(f'{b} {os.path.basename(s)} {pol:6s} file == expected '
+                        f'({len(dp.changed_ranges(want, raw))} ranges differ from the camera file)', diff, [])
+                trail = trail_dest(e.blocks - 1)
+                R.check(f'{b} {os.path.basename(s)} {pol:6s} new code: runs, writes outside trailing row/stack',
+                        (e.new_entries, outside(e.new_writes, trail, trail + ROW_BYTES)), (int(hooked), []))
                 if pol == 'eager' and s == samples[0]:
                     f = ref['flashed', s]
-                    R.check(f'{b} file name', e.name, (DIR + b'RAW').decode())
+                    R.check(f'{b} file name', e.name, (DIR + ext).decode())
                     R.check(f'{b} call trace == flashed', e.calls == f.calls, True)
                     R.check(f'{b} header-block write addresses == flashed ({len(f.hdr_writes)} writes)',
-                            [(a, z) for a, z, _ in e.hdr_writes] == [(a, z) for a, z, _ in f.hdr_writes], True)
-                    ring = e.u32(RING)
-                    R.check(f'{b} header-block writes differing from flashed (ring offset, value)',
-                            [(a - ring, v) for (a, _, v), (_, _, fv) in zip(e.hdr_writes, f.hdr_writes)
-                             if v != fv], [(6, 0xA5)])
+                            sorted((a, z) for a, z, _ in e.hdr_writes) == sorted((a, z) for a, z, _ in f.hdr_writes),
+                            True)
                     R.check(f'{b} DMA/ring bookkeeping == flashed', e.chains == f.chains and
                             (e.blocks, e.spos, e.done) == (f.blocks, f.spos, f.done), True)
-        # .BIA (dark frame) uses the same type-0 path: the canary appears there too
+                    if 'tiff' in pieces:
+                        t = wd.check(out, raw)
+                        R.check(f'{b} DNG structure check (m8_wrapdng.check): IFD0 tags', t, 35)
+        # .BIA (dark frame): same type-0 header code, hook skips it
         e = save(pxa, raws[samples[0]], 'eager', bia=True)
-        f = save(flashed, raws[samples[0]], 'eager', bia=True)
-        R.check(f'{b} .BIA: name, diff vs flashed .BIA', (e.name, dp.changed_ranges(bytes(e.writer.out),
-                bytes(f.writer.out))), ((DIR + b'BIA').decode(), [(6, 7)]))
+        want = bytearray(bia_ref.writer.out)
+        if 'canary' in pieces:
+            want[6] = 0xA5
+        if 'tiff' in pieces:
+            want[:8] = b'II*\0' + struct.pack('<I', TRAIL_OFF)
+        R.check(f'{b} .BIA: name, == expected, new-code runs, writes other than its stack',
+                (e.name, bytes(e.writer.out) == bytes(want), e.new_entries, outside(e.new_writes, 0, 0)),
+                ((DIR + b'BIA').decode(), True, int(hooked), []))
+        # dng_hook guards, called directly (the code is present from stage 2 on)
+        if 'ldimg' in pieces or 'ldimg (dump)' in pieces:
+            last, size = 165, 7 * ROW_BYTES
+            cases = [('normal', dict(size=size, idx=last), True),
+                     ('even block', dict(size=size, idx=164), True),
+                     ('.BIA flag', dict(size=size, idx=last, bia=True), False),
+                     ('row bytes 7950', dict(size=size, idx=last, row_bytes=7950), False),
+                     ('rows 2646', dict(size=size, idx=last, rows=2646), False),
+                     ('size 0 (dest below buffer)', dict(size=0, idx=164), False),
+                     ('size 1 MB (dest above buffer)', dict(size=0x100000, idx=last), False)]
+            for label, kw, writes in cases:
+                e, kept = run_hook(pxa, **kw)
+                dst = trail_dest(kw['idx']) - (ROWS - kw['idx'] * 16) * ROW_BYTES + kw['size']
+                dma = [w for w in e.new_writes if not et.STACK <= w[0] < et.STACK + 0x10000]
+                R.check(f'{b} dng_hook {label}: regs kept, writes, outside trailing row',
+                        (kept, bool(dma), outside(e.new_writes, dst, dst + ROW_BYTES)), (True, writes, []))
         # settings loader and SET menu behave exactly as on the flashed build
         same = all(et.run_loader(pxa, et.make_eeprom(pxa, p, c))['block'] ==
                    et.run_loader(flashed, et.make_eeprom(flashed, p, c))['block']

@@ -16,6 +16,8 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
 - `tools/m8_rawpatch.py` — `python3 tools/m8_rawpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014.upd`
 - `tools/m8_emutest.py` — Unicorn test of the RAW patch: `work/venv/bin/python tools/m8_emutest.py [-v]`
 - `tools/m8_dngpatch.py` — staged DNG builds: `work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014-stageN.upd --stage N`
+- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`); `tools/m8_asm.py X.s`
+  assembles one and prints bytes + SHA-256 (the patch script carries the frozen bytes).
 - `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples (~2 min):
   `work/venv/bin/python tools/m8_savetest.py [--stage N] [--quick] [-v]`
 - `tools/m8_reclaim.py` — ranks debug-command handlers as reclaimable space: `work/venv/bin/python tools/m8_reclaim.py`

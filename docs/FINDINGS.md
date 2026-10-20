@@ -9,7 +9,8 @@ are marked **[tested]**.
   Update ran normally (progress bar paused around 60%, then completed) and asked for a restart.
   Camera boots normally; SET → Compression lists JPG fine+RAW; selection survives power-off
   and sleep/wake; RAW + JPG files are written and convert with m8raw2dng2.
-- Pending: continuous-shooting test until the buffer fills (scratch card).
+- **2026-10-20 [tested]** Continuous-shooting test in JPG fine+RAW until the buffer filled
+  (scratch card, on the stage-1 build): passed. Burst files not kept.
 - **2026-10-20 [tested]** Rollback drill, first half: from the patched 2.014 build, flashing stock
   `firmware/stock/m8-2_014.upd` worked without issue; reflashing patched `f6589c41…` also worked,
   RAW setting back and working. **Round trip complete.**
@@ -225,18 +226,58 @@ work/venv/bin/pip install unicorn capstone`). The same harness is the base for t
 
 ## Staged DNG builds (`tools/m8_dngpatch.py`)
 
-Each build = stock → P1–P3 (must equal flashed `f6589c41…`) → the stage's changes; refused if any
-byte differs from the flashed build outside the stage's declared regions (header 0x3CE48–0x3CF20,
-hook 0x3C6A8, ldimg 0x28AB0–0x29104, extension 0xD6590–0xD6593) or outside the PXA lump.
+Each build = stock → P1–P3 (must equal flashed `f6589c41…`) → the stage's pieces; refused if any
+byte differs from the flashed build outside the pieces' declared regions (header 0x3CE48–0x3CF20,
+hook 0x3C6A8, ldimg 0x28AB0–0x29104, ext literal 0x3CFF8) or outside the PXA lump.
+
+Pieces (sources in `tools/asm/`, bytes frozen with SHA-256 in the patch script; the test reassembles
+and compares):
+- **canary** 0x3CEA0 `mov r0,#7` → `#0xA5`.
+- **tiff** 0x3CE48–0x3CEFC rewritten (`m8_header.s`, same 46 instructions): u16[0..3] = `4949 002A
+  0FCC 0141` = "II", 42, IFD0 at **21,041,100 = 0x01410FCC**; all other header fields as stock. Room
+  from loading job+0x210 bytes with three `ldrb` instead of ldr + shifts + masks. No hook needed.
+  (A first version had 0x0ECC — a hex slip; the save-path test caught it against m8_wrapdng.BASE.)
+- **ldimg** 0x28AB0: stub `mov r0,#0; bx lr`; 0x28AB8 `dng_hook` (`m8_dnghook.s`, 476 bytes incl.
+  literals), then tables (mode word, template length, 10 slots {template offset, job offset, length},
+  902-byte template from `m8_wrapdng.build_template`), rest of the region `udf` (0xE7F000F0).
+  dng_hook: skips .BIA (job+0x21A), any geometry other than 7952 bytes × 2647 rows, and any
+  destination outside the DMA buffer; dest = trailing row of the last block's buffer; mode 1 dumps
+  "M8DUMP01", ctx+0x4210..0x4240, hook inputs, job+0..0x280, settings block 0x200 into the trailing
+  row; mode 2 copies the template and fills the slots from S (job+4); then cleans + invalidates the
+  D-cache lines of dest..dest+0x800 and drains the write buffer. All stores go through one copy loop
+  that writes nothing unless the range lies in the trailing row and the DMA buffer. Calls no firmware
+  function. Returns with `sub pc, lr, #0xC0` (→ 0x3C5EC), so it is position independent.
+- **hook** 0x3C6A8 `b 0x3C5EC` → `bl 0x28AB8` (`02b1ffeb`). lr is dead there (the producer saved it).
+- **ext** literal 0x3CFF8 0xD6590 ("RAW") → 0xD6570 ("DNG", used by DNG mode). Its only reader is
+  0x3CCE0. Not the string itself: **"RAW" at 0xD6590 is referenced from 7 places** (0x38B30,
+  0x38C34, 0x38DA8, 0x38F34, 0x3CFF8, 0x699C0, 0x6B028).
 
 | Stage | Change | File | SHA-256 | Status |
 |---|---|---|---|---|
-| 1 | 0x3CEA0 `0700a0e3` mov r0,#7 → `a500a0e3` mov r0,#0xA5: RAW header u16[3] 7 → 0xA5 (file bytes 6–7 `07 00` → `a5 00`) | `firmware/patched/m8-2_014-stage1.upd` | `3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66` | emulator 32/0; **flashed, camera-tested 2026-10-20** |
+| 1 | canary (file bytes 6–7 `07 00` → `a5 00`) | `firmware/patched/m8-2_014-stage1.upd` | `3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66` | emulator pass; **flashed, camera-tested 2026-10-20** |
+| 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `1761dbb907db0dcd32e4685db16e4ad774deca422dfcec72a950c0c30317453e` | emulator 145/0; not flashed |
+| 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `41ea871b477d22f7ba235f96ed69953acb2dc6b33f3e1dfa6cf3fac9c1d15496` | emulator 145/0; not flashed |
+| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `3b451b4d7da62621179995ba11fa5962f347c7aa9d82e99a9e156e7801ee6e25` | emulator 145/0; not flashed |
+| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `a9c5f617c0e11e504ddd83289539d733360ce7d2d82bdae17fb54c83dafdac99` | emulator 145/0; not flashed |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
 same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the
 same canary (same type-0 header code); settings loader and SET menu identical to the flashed build.
 m8raw2dng2 skips the 54 header samples (`data[header:...]`), so it still converts stage-1 RAWs.
+
+Stages 2–5 emulator result (2026-10-20, `m8_savetest.py`): every file equals an independently
+computed expectation (canary byte / dump contents / `m8_wrapdng.wrap()` output) under all four writer
+timings and both samples; the new code runs exactly once per file (never in stages 1–2), and writes
+only the trailing row and its own stack; same call trace, header-block write addresses and DMA/ring
+bookkeeping as the flashed build; .BIA: hook entered, writes nothing (stack only), header as the
+stage's header code; guards tested by calling dng_hook directly (.BIA flag, row bytes 7950, rows 2646,
+destination below/above the buffer → no writes; registers r4–r11, sp preserved); settings loader and
+SET menu identical; only references into the new code: the debug initializer's pointer (0x2DD48) and,
+from stage 3, the hook. **The emulated stage-4 file is byte-identical to
+`sampleraws/L1031902.DNG`**, the desktop-prototype DNG Lightroom opened (14-bit, shutter, ISO), and
+decodes in LibRaw. Not modelled: the D-cache (the clean/invalidate ops execute but have no effect in
+the emulator) and the slot offsets in S (the emulator puts values where the table expects them;
+stage 3 checks the real offsets on the camera).
 
 ## Reclaimable space: debug-shell commands (2026-10-19, `tools/m8_reclaim.py`)
 

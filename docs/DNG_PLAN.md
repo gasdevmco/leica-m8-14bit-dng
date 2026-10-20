@@ -223,6 +223,11 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
      5. Pass → leave stage 1 installed until stage 2 (it is harmless). Anomaly → pull the battery
         first; rollback = flash `firmware/patched/m8-2_014.upd` (`f6589c41…`).
      **Result 2026-10-20: pass** (FINDINGS "Hardware results"); stage 1 stays installed.
+   - **Stages 2–5 built and emulator-tested (2026-10-20)** — FINDINGS "Staged DNG builds". The
+     header rewrite fits in place (no hook). Stage 5 changes the store routine's literal, not the
+     shared "RAW" string. The emulated stage-4 file equals the Lightroom-tested prototype DNG byte for
+     byte. Next on the camera: stage 2 (idle test), same procedure as stage 1 plus the burst test;
+     the RAW header should still read `a500`.
 6. Per stage on the camera: scratch card, full battery, single shots, power cycle, Lightroom
    import, then bursts; after any anomaly pull the battery first.
 
@@ -279,7 +284,7 @@ What moved it (10-20):
 - **Stage 1 on the camera:** the header bytes came out exactly as emulated — the static map and
   the emulator predict the hardware, the JPG fine+RAW save really runs this code, and the update
   path accepts and boots a code-modified build. Other modes unchanged.
-Still limiting (needs running code): header rewrite fitting the TIFF header (0x4949, 0x0ECC,
+Still limiting (needs running code): header rewrite fitting the TIFF header (0x4949, 0x0FCC,
 0x0141 are not ARM immediates), DMA/cache coherence in the last block, metadata offsets in S,
 unknown runtime callers of `ldimg`. Playback with `.DNG` is retired (tested 2026-10-20).
 Next movers: stage 2 idle test (→ brick ~99%), stage 3 metadata dump (→ metadata ~88% if the
@@ -294,7 +299,8 @@ offsets hold), stage 4 (the big one: → ~97% if it opens in Lightroom).
 
 - File size ~21 MB + JPG per shot (vs ~10 MB DNG): fewer shots per card, longer saves,
   smaller burst. Leica's 2006 reasons for 8-bit DNG were size/speed/card capacity, not safety.
-- Still pending on the RAW patch: continuous-shooting test until buffer fills (scratch card).
+- Continuous shooting in JPG fine+RAW until the buffer fills: passed 2026-10-20 (stage-1 build).
+  Baseline for repeating the same burst test on each later stage.
   M8 spec ~2 fps normal; RAW slower. Recommend single frames until tested.
 
 ## 11. Related ideas parked
