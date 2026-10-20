@@ -226,8 +226,22 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
    - **Stages 2–5 built and emulator-tested (2026-10-20)** — FINDINGS "Staged DNG builds". The
      header rewrite fits in place (no hook). Stage 5 changes the store routine's literal, not the
      shared "RAW" string. The emulated stage-4 file equals the Lightroom-tested prototype DNG byte for
-     byte. Next on the camera: stage 2 (idle test), same procedure as stage 1 plus the burst test;
-     the RAW header should still read `a500`.
+     byte.
+   - **Decision 2026-10-20: go straight to stage 4.** Stage 2 adds diagnosis, not recoverability
+     (same reclaimed bytes as stage 4; boot/update code byte-identical in every stage). Stages 2
+     and 3 stay built as diagnostic fallbacks: stage 3 if the DNG's exposure/ISO/date are wrong,
+     stage 2 if a hooked build misbehaves in a way that points away from the save path.
+   - **Stage 4 on the camera:**
+     1. Full battery; recovery card with only the stock `.upd` set aside; update card with only
+        `firmware/patched/m8-2_014-stage4.upd` (`3b451b4d…`) renamed `M8-2_014.UPD`. Flash.
+     2. Scratch card: SET still JPG fine+RAW; one single frame; one JPG fine and one DNG-mode frame;
+        back to JPG fine+RAW; power-cycle; one more frame; then a burst until the buffer fills.
+     3. Copy to `fromcameraimports/`. `xxd -l 8 L10xxxxx.RAW` must show `4949 2a00 cc0f 4101`
+        (TIFF header, IFD0 at 21,041,100). Make a copy named `.DNG` and import it into Lightroom:
+        opens with the M8 profile; exposure, ISO and date match the JPG; bottom rows of the image
+        clean. The `.RAW` itself still converts with m8raw2dng2.
+     4. Anomaly → battery pull first; then Compression → JPG fine (new code never runs) and reflash
+        stage 1 or `firmware/patched/m8-2_014.upd`; stock `.upd` from the recovery card if needed.
 6. Per stage on the camera: scratch card, full battery, single shots, power cycle, Lightroom
    import, then bursts; after any anomaly pull the battery first.
 
@@ -287,8 +301,8 @@ What moved it (10-20):
 Still limiting (needs running code): header rewrite fitting the TIFF header (0x4949, 0x0FCC,
 0x0141 are not ARM immediates), DMA/cache coherence in the last block, metadata offsets in S,
 unknown runtime callers of `ldimg`. Playback with `.DNG` is retired (tested 2026-10-20).
-Next movers: stage 2 idle test (→ brick ~99%), stage 3 metadata dump (→ metadata ~88% if the
-offsets hold), stage 4 (the big one: → ~97% if it opens in Lightroom).
+Next movers: stage 4 on the camera (the big one: → ~97% if it opens in Lightroom with correct
+metadata); stage 3 dump only if the metadata is wrong; stage 2 skipped (decision 2026-10-20).
 
 - Effort: a few weeks of evenings; most time in steps 3 and 5.
 - CPU cost: negligible (8-byte header + ~750-byte template into the trailing row). Bottleneck stays the SD card write

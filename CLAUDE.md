@@ -42,8 +42,10 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
     range) and its own stack; the emulator test fails on any other write.
   - Each build may differ from the current flashed build only in the declared regions (header code,
     last-block branch, reclaimed `ldimg` space, extension string); checked automatically.
-  - New code stays out of startup; reclaimed space is filled and flashed with the hook off first
-    (idle test) before a build that enables it.
+  - New code stays out of startup. Before each flash, confirm the boot/update code is byte-identical
+    and unreachable from the changed regions (done for stage 4, FINDINGS "Staged DNG builds").
+    Stage 2 (hook off, idle test) is optional since 2026-10-20 (owner's decision): its reclaimed
+    space is byte-identical to stages 4-5, so it adds diagnosis, not recoverability.
   - After any anomaly on a test build: pull the battery first — not the power switch, not the card
     (power-state changes and card insert/remove save settings to EEPROM; a battery pull saves nothing).
   - Before any new flash: rollback drill done once (patched → stock → patched), full battery,
