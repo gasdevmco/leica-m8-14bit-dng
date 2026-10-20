@@ -30,6 +30,7 @@ and refuses anything else.
 - [Testing without a camera](#testing-without-a-camera)
 - [Repository layout](#repository-layout)
 - [Credits](#credits)
+- [License](#license)
 
 ## What you get
 
@@ -207,3 +208,9 @@ but not hooked in, 3 = metadata dump, 5 = `.DNG` names.
 - **Alex Hude** — "How to Hack an Expensive Camera…", the write-up on Leica's update-file format.
 
 Leica and M8 are trademarks of Leica Camera AG. This project isn't affiliated with Leica Camera AG.
+
+## License
+
+The scripts, assembly sources and documentation in this repository are released under the
+[MIT License](LICENSE). The license covers only this project's own work, not Leica's firmware, which
+is not included and must not be added.
