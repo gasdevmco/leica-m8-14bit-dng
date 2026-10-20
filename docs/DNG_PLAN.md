@@ -1,7 +1,10 @@
 # Plan: native 14-bit DNG written by the camera
 
-Status: **working on the camera** (2026-10-20): stage 5 (`d9a94feb…`) flashed; JPG fine+RAW writes
-JPG + 14-bit DNG, Lightroom imports it directly with correct exposure, ISO and date. Remaining:
+Status: **working on the camera** (2026-10-20): **stage 4** (`59aff4a3…`) is the chosen build:
+JPG fine+RAW writes JPG + 14-bit DNG content named `.RAW`, which Lightroom opens as is, with
+correct exposure, ISO and date; in-camera review shows the JPG. Stage 5 (`.DNG` names) was tried
+and rolled back: in-camera review of a camera-written pair shows the DNG's filename and cannot reach
+the JPG (our DNG has no embedded preview). Revisit `.DNG` names only with an embedded preview. Remaining:
 validation in normal use (§8 "After stage 5") and optional tuning. Builds on the persistent-RAW patch
 (see `FINDINGS.md`), which is flashed and working on the author's M8 (patched 2.014).
 

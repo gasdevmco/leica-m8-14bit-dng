@@ -21,6 +21,11 @@ are marked **[tested]**.
   **Lightroom opened the camera-written file** (copy named L1031916.DNG). Burst test on stage 4 not
   done yet. Corrected builds: stage 4 `59aff4a3…`, stage 5 `d9a94feb…` (differ from the flashed
   stage 4 only in the three date-slot source bytes 0x24 → 0x20 at 0x28C9A/0x28CBA/0x28CC2).
+- **2026-10-20 [tested]** **Stage 5 playback problem → back to stage 4.** In-camera review of a
+  camera-written stage-5 pair (JPG + our `.DNG`) shows the DNG's filename in the centre and does not
+  navigate to the JPG — unlike the earlier test with Mac-copied files. Our DNG has no embedded
+  preview. Decision: run stage 4 (`59aff4a3…`, date-fixed; same content, `.RAW` name). **Lightroom
+  opens the `.RAW` file directly** (no rename needed). Recovery check on `59aff4a3` repeated: pass.
 - **2026-10-20 [tested]** **Stage 5 (`d9a94feb…`) flashed — goal reached.** JPG fine+RAW writes
   `L1031919.JPG` + `L1031919.DNG` (21,049,052 bytes, 14-bit). Structure check passes (35 tags),
   LibRaw decodes it, every per-shot slot equals the JPG's EXIF **including the date** (2026:10:20
