@@ -5,9 +5,10 @@ Private tools and notes for modifying Leica M8 firmware.
 - **Persistent RAW patch:** makes the service-mode "JPG fine+RAW" (14-bit) setting selectable in
   SET and keeps it across power cycles. **2.014: tested on hardware** (2026-10-19) and in the
   emulator. 2.024: same code, untested on hardware.
-- **In-camera 14-bit DNG (in progress):** the desktop prototype produces DNGs that Lightroom opens
-  natively, with per-shot exposure, ISO and date. Firmware phase started: staged builds and an emulated save path; stage 1 (canary) built. Plan:
-  [`docs/DNG_PLAN.md`](docs/DNG_PLAN.md).
+- **In-camera 14-bit DNG: working on one camera (2026-10-20).** In JPG fine+RAW mode the camera
+  writes a JPG plus a 14-bit `.DNG` that Lightroom imports directly, with per-shot exposure, ISO and
+  date. Built in stages with `tools/m8_dngpatch.py`, each tested in an emulated save path
+  (`tools/m8_savetest.py`) before flashing. Plan and status: [`docs/DNG_PLAN.md`](docs/DNG_PLAN.md).
 - All addresses, hashes and conclusions: [`docs/FINDINGS.md`](docs/FINDINGS.md).
 
 No Leica firmware is included. Put your own stock `.upd` files in `firmware/stock/`; the scripts

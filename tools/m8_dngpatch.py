@@ -158,7 +158,7 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '98011d7b48243917dee3807eda547719a50204f2576bea289d45c5473609a88b': 'stage 2, m8_savetest 145/0 (2026-10-20); not flashed',
     'c152d30593e52e41ebdb44f1b9573f5a113e5d52e34066d79fc6b48ead2dd526': 'stage 3, m8_savetest 145/0 (2026-10-20); not flashed',
     '59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c': 'stage 4, date fixed, m8_savetest 145/0 (2026-10-20); not flashed',
-    'd9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66': 'stage 5, date fixed, m8_savetest 145/0 (2026-10-20); not flashed',
+    'd9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66': 'stage 5, date fixed, m8_savetest 145/0; flashed 2026-10-20, Lightroom imports its DNGs',
 }
 
 

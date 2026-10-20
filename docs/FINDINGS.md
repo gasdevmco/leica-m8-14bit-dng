@@ -21,6 +21,12 @@ are marked **[tested]**.
   **Lightroom opened the camera-written file** (copy named L1031916.DNG). Burst test on stage 4 not
   done yet. Corrected builds: stage 4 `59aff4a3…`, stage 5 `d9a94feb…` (differ from the flashed
   stage 4 only in the three date-slot source bytes 0x24 → 0x20 at 0x28C9A/0x28CBA/0x28CC2).
+- **2026-10-20 [tested]** **Stage 5 (`d9a94feb…`) flashed — goal reached.** JPG fine+RAW writes
+  `L1031919.JPG` + `L1031919.DNG` (21,049,052 bytes, 14-bit). Structure check passes (35 tags),
+  LibRaw decodes it, every per-shot slot equals the JPG's EXIF **including the date** (2026:10:20
+  21:13:45; date fix confirmed), ExposureTime 1333/1000000, ISO 160. **Lightroom imports it
+  directly.** DNG-mode (L1031921) and JPG-only (L1031920) frames normal. Not yet checked: on-camera
+  playback/delete of a stage-5 pair, burst, long exposure (.BIA).
 - **2026-10-20 [tested]** Continuous-shooting test in JPG fine+RAW until the buffer filled
   (scratch card, on the stage-1 build): passed. Burst files not kept.
 - **2026-10-20 [tested]** Rollback drill, first half: from the patched 2.014 build, flashing stock
@@ -270,7 +276,7 @@ and compares):
 | 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `98011d7b48243917dee3807eda547719a50204f2576bea289d45c5473609a88b` | emulator 145/0; not flashed |
 | 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `c152d30593e52e41ebdb44f1b9573f5a113e5d52e34066d79fc6b48ead2dd526` | emulator 145/0; not flashed |
 | 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` | emulator 145/0; not flashed (first version `3b451b4d…`, date slot wrong, **flashed 2026-10-20: Lightroom opens its files**) |
-| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `d9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66` | emulator 145/0; not flashed |
+| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `d9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66` | emulator 145/0; **flashed 2026-10-20, on the camera; Lightroom imports its DNGs** |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
 same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the

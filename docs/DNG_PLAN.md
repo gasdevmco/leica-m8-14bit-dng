@@ -1,7 +1,8 @@
 # Plan: native 14-bit DNG written by the camera
 
-Status: **firmware phase** (2026-10-20): staged patch tool and emulated save path done, stage 1
-(canary) flashed and camera-tested 2026-10-20 (header shows `a500`). Next: stage 2. Builds on the persistent-RAW patch
+Status: **working on the camera** (2026-10-20): stage 5 (`d9a94feb…`) flashed; JPG fine+RAW writes
+JPG + 14-bit DNG, Lightroom imports it directly with correct exposure, ISO and date. Remaining:
+validation in normal use (§8 "After stage 5") and optional tuning. Builds on the persistent-RAW patch
 (see `FINDINGS.md`), which is flashed and working on the author's M8 (patched 2.014).
 
 Goal: when Compression = JPG fine+RAW, the camera writes a real 16-bit DNG (14-bit data) that
@@ -301,6 +302,11 @@ What moved it (10-20):
 Still limiting (needs running code): header rewrite fitting the TIFF header (0x4949, 0x0FCC,
 0x0141 are not ARM immediates), DMA/cache coherence in the last block, metadata offsets in S,
 unknown runtime callers of `ldimg`. Playback with `.DNG` is retired (tested 2026-10-20).
+**After stage 5 (2026-10-20):** validation still open — on-camera playback / info screen / pair
+delete on a stage-5 pair, burst until the buffer fills, a long exposure (.BIA: skipped by the hook,
+gets the TIFF header bytes; check m8raw2dng2 still reads it), card nearly full. Optional tuning:
+black level per ISO (lens-cap frames), WB preset → AsShotNeutral (needs the WB field: stage 3 dump),
+lens name / body serial / MakerNote, embedded thumbnail.
 Next movers: stage 4 on the camera (the big one: → ~97% if it opens in Lightroom with correct
 metadata); stage 3 dump only if the metadata is wrong; stage 2 skipped (decision 2026-10-20).
 
