@@ -179,12 +179,36 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
    B 97) was treated as light and tinted magenta by the WB gains. BlackLevel 92 fixed it → now
    the default (`--black 0` omits it). Open question: per-channel black (green slightly high?)
    — settle with a lens-cap dark frame; result would be baked in as constants, never measured per shot.
-3. Find the RAW file write path (start from §7 leads); document the file API calls and where
-   per-shot metadata lives.
-4. Choose and verify reclaimable debug code space.
-5. Write the in-camera code (ARMv5), run it in the harness against a real RAW buffer, compare
-   output byte-for-byte with step 2's desktop DNG.
-6. Flash on a scratch card; test single shots, power cycle, Lightroom import, then bursts.
+3. ~~Find the RAW file write path~~ — done (FINDINGS "Image save path", "Per-shot metadata").
+4. ~~Choose and verify reclaimable debug code space~~ — done (`ldimg`, 1,620 B; m8_reclaim + Ghidra).
+5. **Build the complete solution locally, then flash it in stages** (agreed 2026-10-19):
+   - One patch source, `tools/m8_dngpatch.py --stage N`, generates every staged build (like
+     `m8_rawpatch.py --no-menu`). The full design is built and emulated first; each flashed build
+     is a slice of that tested whole.
+   - Pieces: header rewrite at 0x3CE48 (or one-instruction hook if it won't fit), hook at 0x3C6A8
+     (last-block branch), routine + template in `ldimg` (stub kept at its entry), .BIA gate
+     (job flag +0x21A), bounds check on the destination, extension "RAW" → "DNG" (0xD6590).
+   - Emulator before any flash: simulated shutter press through the real save path
+     (0x3C904 → 0x3C5A4 → hook) on `sampleraws/L1031902.RAW` producing a full DNG, compared
+     byte-for-byte with `m8_wrapdng.py` output; write-bounds check (writes only in the DMA buffer
+     and own stack); camera DNG reader (0x6DDAC/0x6DB74) run on the result; existing 126 tests;
+     declared-regions diff vs the current flashed build.
+   - Stages (one per flash, each re-emulated before flashing):
+
+     | Stage | Flashed change | Proves |
+     |---|---|---|
+     | 1 | Canary: one header constant | We control file contents |
+     | 2 | Routine + template in `ldimg`, hook **off** | Idle test: nothing else uses that space |
+     | 3 | Hook on, copying job metadata (~256 B) into the trailing row | Metadata offsets, from the camera |
+     | 4 | Hook on, real template + TIFF header, still `.RAW` | First in-camera 14-bit DNG |
+     | 5 | Extension → `.DNG` | Playback copes (pairs and lone DNG) |
+   - Caveat: what early stages show can change later pieces (e.g. stage 3 offsets) — the full
+     build is a revisable plan, not a frozen product.
+6. Per stage on the camera: scratch card, full battery, single shots, power cycle, Lightroom
+   import, then bursts; after any anomaly pull the battery first.
+
+**Before stage 1 (no new firmware needed):** rollback drill (patched → stock → patched);
+scratch-card playback test with our DNG (pair + lone copy) on the current build; lens-cap frames.
 
 **To-do (at the camera):**
 - [ ] **Lens-cap dark frames** for the black-level constants. Lens cap on, JPG fine+RAW,
