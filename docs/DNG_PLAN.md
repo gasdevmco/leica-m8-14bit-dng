@@ -208,9 +208,9 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
    import, then bursts; after any anomaly pull the battery first.
 
 **Before stage 1 (no new firmware needed):** rollback drill (patched → stock → patched);
-scratch-card playback test with our DNG (pair + lone copy) on the current build; lens-cap frames.
+scratch-card playback test with our DNG (pair + lone copy) on the current build.
 
-**To-do (at the camera):**
+**Deferred until stage 4 works (tuning, not implementation):**
 - [ ] **Lens-cap dark frames** for the black-level constants. Lens cap on, JPG fine+RAW,
   ~1/250 s, one frame each at ISO 160 and ISO 2500 (ideally also 320/640/1250), keep the
   JPGs. Copy RAW+JPG pairs into `sampleraws/`. Answers two questions:
