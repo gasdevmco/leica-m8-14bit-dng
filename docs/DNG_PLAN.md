@@ -1,6 +1,7 @@
 # Plan: native 14-bit DNG written by the camera
 
-Status: **idea / planning**. Nothing implemented yet. Builds on the persistent-RAW patch
+Status: **firmware phase** (2026-10-20): staged patch tool and emulated save path done, stage 1
+(canary) flashed and camera-tested 2026-10-20 (header shows `a500`). Next: stage 2. Builds on the persistent-RAW patch
 (see `FINDINGS.md`), which is flashed and working on the author's M8 (patched 2.014).
 
 Goal: when Compression = JPG fine+RAW, the camera writes a real 16-bit DNG (14-bit data) that
@@ -204,6 +205,24 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
      | 5 | Extension → `.DNG` | Playback copes (pairs and lone DNG) |
    - Caveat: what early stages show can change later pieces (e.g. stage 3 offsets) — the full
      build is a revisable plan, not a frozen product.
+   - **Progress (2026-10-20):** `tools/m8_dngpatch.py --stage N` (stage 1 built; 2–5 refused as
+     not built yet) and `tools/m8_savetest.py` (emulated save path, FINDINGS "Emulated save path")
+     done. Stock reproduces both camera RAWs byte for byte through the real store routine, DMA
+     handler and RAW producer. Stage 1 (`3f84b34a…`) passes 32/0: only file byte 6 changes.
+     Stage 1 is flashed ahead of the full design because it is independent of it: one immediate in
+     the header block, which stage 4 rewrites anyway.
+   - **Stage 1 on the camera** (rules in §6 / CLAUDE.md; rollback drill already done):
+     1. Full battery. Recovery card with only the stock `.upd` set aside. Update card with only
+        `firmware/patched/m8-2_014-stage1.upd`, renamed `M8-2_014.UPD`. Flash as usual.
+     2. After restart, on the scratch card: SET still shows JPG fine+RAW; take one single frame.
+        Then one frame each in JPG fine and DNG (untouched modes), and switch back to JPG fine+RAW.
+     3. Power-cycle, one more JPG fine+RAW frame.
+     4. Desktop: `xxd -l 8 L10xxxxx.RAW` must show `ffff 0c00 3600 a500` (stock: `… 0700`);
+        file size 21,049,052; m8raw2dng2 and `m8_wrapdng.py` convert it; the JPG and the DNG-mode
+        file look normal.
+     5. Pass → leave stage 1 installed until stage 2 (it is harmless). Anomaly → pull the battery
+        first; rollback = flash `firmware/patched/m8-2_014.upd` (`f6589c41…`).
+     **Result 2026-10-20: pass** (FINDINGS "Hardware results"); stage 1 stays installed.
 6. Per stage on the camera: scratch card, full battery, single shots, power cycle, Lightroom
    import, then bursts; after any anomaly pull the battery first.
 
@@ -234,23 +253,37 @@ scratch-card playback test with our DNG (pair + lone copy) on the current build:
 Optional tooling: Ghidra on the Mac (processor ARM:LE:32:v5t, base 0x20000) for decompilation;
 REA (only from github.com/morluto/rea or npm `rea-agents`) if wanted.
 
-## 9. Estimates (updated end of 2026-10-19)
+## 9. Estimates (updated 2026-10-20, after stage 1 passed on the camera)
 
-| Question | Morning | Now |
-|---|---|---|
-| Camera writes a 14-bit DNG Lightroom opens (fixed date/WB) | ~65–75% | **~85%** |
-| Same, with full per-shot metadata (exposure, ISO, date, lens, WB preset) | ~55–65% | **~80%** (was 65% before the metadata trace) |
-| No brick needing Leica/serial | ~95–97% | **~98%** |
-| Bootloader and SD updater untouched | ~99% | **~99%+** |
-| Can always reflash stock from SD | — | **~99%** (round trip patched → stock → patched tested 2026-10-20) |
+| Question | 10-19 end | 10-20 emulated | **10-20 after stage 1** |
+|---|---|---|---|
+| Camera writes a 14-bit DNG Lightroom opens (fixed date/WB) | ~85% | ~89% | **~91%** |
+| Same, with full per-shot metadata (exposure, ISO, date, lens, WB preset) | ~80% | ~82% | **~83%** |
+| No brick needing Leica/serial (whole project) | ~98% | ~98% | **~98.5%** |
+| Bootloader and SD updater untouched | ~99%+ | ~99.9% | **~99.9%** (unchanged in every build so far; tool-checked) |
+| Can always reflash stock from SD | ~99% | ~99% | **~99%+** (round trip tested; updater accepted a code-modified build) |
 
-What moved it: format proven in Lightroom with the exact in-camera layout; save path mapped (CPU
-builds header, memcpy RAW producer, last-block hook, no file-size change); 1.6 KB reclaimable
-space confirmed by two tools; ARMv5 toolchain and emulator guard; mode choice (RAW+JPG only);
-boot order, settings-save events and GPIO95 understood. What still limits it (needs running code):
-emulated save path, header rewrite, playback with .DNG, DMA/cache coherence in the last block.
-Next movers: rollback drill (reflash → ~99%), emulated save path (success → ~88–90%), step-1
-canary flash (→ ~90%+), RAW+JPG pair + metadata search (makes the metadata number real).
+Per stage (first attempt / eventually, after fixes):
+
+| Stage | Passes first try | Eventually | Main risk |
+|---|---|---|---|
+| 1 canary | — | **done 2026-10-20** | — |
+| 2 `ldimg` filled, hook off (idle test) | ~95% | ~98% | a runtime-computed call into `ldimg` (no static or Ghidra reference found) |
+| 3 metadata dump | ~85% | ~97% | offsets in S wrong or data not yet filled when the last block runs — the dump itself shows which |
+| 4 first in-camera DNG (`.RAW`) | ~75% | ~92% | header rewrite fit; cache coherence of the template written into the DMA buffer |
+| 5 `.DNG` extension | ~95% | ~98% | card scan/playback with many DNGs (lone and paired DNG already tested) |
+
+What moved it (10-20):
+- Emulated save path reproduces both camera RAWs byte for byte through the real firmware code,
+  so later stages can be compared byte for byte before flashing; declared-regions check automatic.
+- **Stage 1 on the camera:** the header bytes came out exactly as emulated — the static map and
+  the emulator predict the hardware, the JPG fine+RAW save really runs this code, and the update
+  path accepts and boots a code-modified build. Other modes unchanged.
+Still limiting (needs running code): header rewrite fitting the TIFF header (0x4949, 0x0ECC,
+0x0141 are not ARM immediates), DMA/cache coherence in the last block, metadata offsets in S,
+unknown runtime callers of `ldimg`. Playback with `.DNG` is retired (tested 2026-10-20).
+Next movers: stage 2 idle test (→ brick ~99%), stage 3 metadata dump (→ metadata ~88% if the
+offsets hold), stage 4 (the big one: → ~97% if it opens in Lightroom).
 
 - Effort: a few weeks of evenings; most time in steps 3 and 5.
 - CPU cost: negligible (8-byte header + ~750-byte template into the trailing row). Bottleneck stays the SD card write

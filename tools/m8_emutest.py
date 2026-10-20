@@ -12,7 +12,7 @@ Usage:  python3 tools/m8_emutest.py [stock.upd] [patched.upd] [-v]
 Needs:  pip install unicorn
 """
 import hashlib, os, struct, sys
-from unicorn import (Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_INVALID,
+from unicorn import (Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_BLOCK, UC_HOOK_MEM_INVALID,
                      UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE)
 from unicorn.arm_const import *
 
@@ -82,15 +82,19 @@ class Escape(Exception):
 
 
 class Emu:
-    def __init__(self, pxa, real=REAL, stubs=STUBS):
+    # ram: size of the RAM map from 0 (m8_savetest maps all 64 MB of SDRAM; the fixed regions
+    # below then lie inside it). per_block: check escapes per basic block instead of per
+    # instruction (stubs are function entries, so they start blocks) -- much faster.
+    def __init__(self, pxa, real=REAL, stubs=STUBS, ram=MEM_HI, per_block=False):
         self.pxa, self.real, self.stubs = pxa, real, stubs
         self.uc = uc = Uc(UC_ARCH_ARM, UC_MODE_ARM)
         uc.ctl_set_cpu_model(UC_CPU_ARM_PXA270)     # Intel XScale, ARMv5TE
-        uc.mem_map(MEM_LO, MEM_HI - MEM_LO)
+        uc.mem_map(MEM_LO, ram - MEM_LO)
         uc.mem_write(PXA_BASE, pxa)
         for base in (STACK, MENU_OBJ, SCRATCH, SENTINEL):
-            uc.mem_map(base, 0x10000)
-        uc.hook_add(UC_HOOK_CODE, self._code)
+            if base >= ram:
+                uc.mem_map(base, 0x10000)
+        uc.hook_add(UC_HOOK_BLOCK if per_block else UC_HOOK_CODE, self._code)
         uc.hook_add(UC_HOOK_MEM_INVALID, self._badmem)
         # Unicorn does not model ARMv5 rotated unaligned loads, so fail on any misaligned access.
         uc.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, self._align)

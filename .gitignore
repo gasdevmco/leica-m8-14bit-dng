@@ -7,6 +7,7 @@ __pycache__/
 .DS_Store
 # Personal camera samples (photos, large) and local Python env
 sampleraws/
+fromcameraimports/
 .venv/
 *.RAW
 *.raw

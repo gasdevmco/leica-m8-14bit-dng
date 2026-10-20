@@ -13,6 +13,12 @@ are marked **[tested]**.
 - **2026-10-20 [tested]** Rollback drill, first half: from the patched 2.014 build, flashing stock
   `firmware/stock/m8-2_014.upd` worked without issue; reflashing patched `f6589c41…` also worked,
   RAW setting back and working. **Round trip complete.**
+- **2026-10-20 [tested]** Stage-1 canary build (`3f84b34a…`) flashed; updated and booted normally.
+  Files in `fromcameraimports/`: L1031903 JPG fine+RAW pair, L1031904 DNG mode, L1031905 JPG fine.
+  RAW header `ffff 0c00 3600 a500` — u16[3] = 0xA5 is the only header change vs stock, exactly as
+  emulated; size 21,049,052, pixels 122–16383. RAW converts with m8_wrapdng.py and m8raw2dng2
+  (both decode in LibRaw); DNG-mode and JPG files normal. **The camera runs our header code: we
+  control the RAW file contents.** Camera clock reads 2026-10-21 08:17 (a day ahead of the Mac).
 
 ## Stock files
 
@@ -182,6 +188,55 @@ work/venv/bin/pip install unicorn capstone`). The same harness is the base for t
   camera playback/card-scan behaviour with our DNG layout is untested (harness test first).
 - Open: the card-writer task; header rewrite at 0x3CE48 to fit the TIFF
   header (repack zero stores).
+
+## Emulated save path (`tools/m8_savetest.py`) — 2026-10-20
+
+- **Entry points** (event table 0xEEF40–0xEF0E8 style, 16-byte entries): event 0x2AFB → **0x3CA58**
+  store routine, 0x2AFA → **0x3C900** DMA block-complete handler, 0x2AF8 → 0x3D360 writer open.
+  The real entries are the `mov ip, sp` one word before the addresses listed above (0x3CA5C,
+  0x3C904); the RAW producer's entry is 0x3C5A4 as listed. Store routine args: (ctx, msg) with
+  msg+8 = job, msg+0xC = writer object (→ ctx+0x4210). Block handler args: (ctx, status) and it
+  acts only if `[status+8]` has DCSR ENDINTR (bit 2).
+- **Ring buffer** struct at ctx+0x46C8: +0 base, +4 raw size, +8 size, +0xC margin, +0x10 write,
+  +0x14 read, +0x18 count, +0x1C total committed, +0x20 eCos flag (bit 0 = space), +0x28 mutex.
+  Set up by 0x3C454(ring, base, raw, align, margin) via ctx vtable +0x3C = 0x3D2A0: **base
+  0x2841D00, 8 MB, align 0x200, margin 0x40000 → size 0x7C0000** (256 KB overflow slack after it;
+  commit 0x3C500 copies a write that runs past `size` back to the start). Commit clears flag bit 0
+  when count ≥ size − margin; get-space 0x3C4AC waits on bit 0 (0xB48C4, OR mode).
+  Consumer: 0x3D00C (readable contiguous bytes), 0x3D050 (consume; sets bit 0 once free ≥ margin),
+  writer drain 0x3D714(W, mode): mode 0 whole 0x20C000 units, mode 1 whole 0x2000 units, else all;
+  a wrapped tail is written whole; fwrite 0xA83D4. (A second set-up at 0x3DA00 has no references.)
+- **DMA**: 0x3BFBC(ctx, row bytes, rows) → ctx+0x4218 block bytes (rows×16 = 127,232), +0x421C block
+  count ⌈rows/16⌉ = 166, +0x4224 = 90 % of it; two chains of 16-byte descriptors at ctx+0x4230 /
+  +0x4430 (16 descriptors, 0x1FE0 bytes each except the last, which has ENDIRQEN and STOP), targets
+  0xA26F44E0 / +0x3E080, then cache clean/invalidate (cp15 c7). Block handler re-arms DDADR1 with the
+  other chain and starts it (0x3C1E0) **before** producing the current block (double buffering).
+- **Harness**: the functions above + 0x8817C (string append, file name), memcpy, divide run as
+  firmware; eCos mutex/flag calls, FPGA/GPIO/sensor calls (0x94E2C, 0x94E98, 0x90C40, 0x90F2C),
+  0x98324, 0x716F8 and geometry 0x90F9C are stubs; the DMA controller and the card-writer task are
+  Python models (writer mirrors 0x3D00C/0x3D050/0x3D714, four drain timings). Sensor stream = the
+  sample file after its header. ~8 s per simulated shot (per-block escape check).
+- **Result: stock and flashed builds reproduce `L1031902.RAW` and `L1031901.RAW` byte for byte**
+  (all four drain timings; the "lazy" one fills the ring three times and blocks the producer), file
+  name `…L1031902.RAW`, 166 DMA runs of 127,232 bytes, ring empty and end flag ctx+0x4630 set at the
+  end, identical call traces. The header block 0x3CE48–0x3CF20 is reached only from 0x3CD58 (type 0
+  = RAW and .BIA). Mutation check: changing the last-block row computation (0x3C6A0) makes the run
+  fail. Run: `work/venv/bin/python tools/m8_savetest.py [--stage N] [--quick] [-v]`.
+
+## Staged DNG builds (`tools/m8_dngpatch.py`)
+
+Each build = stock → P1–P3 (must equal flashed `f6589c41…`) → the stage's changes; refused if any
+byte differs from the flashed build outside the stage's declared regions (header 0x3CE48–0x3CF20,
+hook 0x3C6A8, ldimg 0x28AB0–0x29104, extension 0xD6590–0xD6593) or outside the PXA lump.
+
+| Stage | Change | File | SHA-256 | Status |
+|---|---|---|---|---|
+| 1 | 0x3CEA0 `0700a0e3` mov r0,#7 → `a500a0e3` mov r0,#0xA5: RAW header u16[3] 7 → 0xA5 (file bytes 6–7 `07 00` → `a5 00`) | `firmware/patched/m8-2_014-stage1.upd` | `3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66` | emulator 32/0; **flashed, camera-tested 2026-10-20** |
+
+Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
+same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the
+same canary (same type-0 header code); settings loader and SET menu identical to the flashed build.
+m8raw2dng2 skips the 54 header samples (`data[header:...]`), so it still converts stage-1 RAWs.
 
 ## Reclaimable space: debug-shell commands (2026-10-19, `tools/m8_reclaim.py`)
 

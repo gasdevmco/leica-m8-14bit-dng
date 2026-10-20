@@ -15,11 +15,15 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
 - `tools/armtools.py` — Capstone helpers (dis, xrefs, callers); defaults to `work/split-2.014/PXA.bin`
 - `tools/m8_rawpatch.py` — `python3 tools/m8_rawpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014.upd`
 - `tools/m8_emutest.py` — Unicorn test of the RAW patch: `work/venv/bin/python tools/m8_emutest.py [-v]`
+- `tools/m8_dngpatch.py` — staged DNG builds: `work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014-stageN.upd --stage N`
+- `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples (~2 min):
+  `work/venv/bin/python tools/m8_savetest.py [--stage N] [--quick] [-v]`
 - `tools/m8_reclaim.py` — ranks debug-command handlers as reclaimable space: `work/venv/bin/python tools/m8_reclaim.py`
 - `tools/ghidra/` — headless Ghidra scripts (M8Pre seed/options, M8Xrefs refs into ranges, M8Coverage).
   Ghidra 12.1.4 + Temurin JDK 21 unpacked in `work/ghidra/` (re-download if work/ is wiped). Run:
   `JAVA_HOME=work/ghidra/jdk-21.0.12.1+1/Contents/Home work/ghidra/ghidra_12.1.4_PUBLIC/support/analyzeHeadless work/ghidra/proj m8 -import work/split-2.014/PXA.bin -overwrite -loader BinaryLoader -loader-baseAddr 0x20000 -processor ARM:LE:32:v5t -scriptPath tools/ghidra -preScript M8Pre.java -postScript M8Xrefs.java name:lo:hi ...`
 - `tools/m8_wrapdng.py` — desktop prototype of the in-camera RAW→DNG wrap: `python3 tools/m8_wrapdng.py sampleraws/X.RAW`
+- `fromcameraimports/` — staging area for files copied off the camera card (test shots of each build). Keep.
 - `sampleraws/` — camera samples (RAW, JPG, lens-cap frames) and DNGs generated from them. Keep.
 - `work/` — scratch output (split lumps etc.), safe to delete.
 - Sibling repo `../m8raw2dng2` — botrx555's RAW→DNG converter; `docs/PROCESSING.md` documents the RAW format.
