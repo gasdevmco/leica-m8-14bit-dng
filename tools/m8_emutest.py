@@ -138,9 +138,11 @@ class Emu:
     def _stub(self, name):
         uc = self.uc
         r = [uc.reg_read(x) for x in (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2)]
-        self.calls.append(name)
+        self.calls.append(getattr(name, '__name__', name))
         ret = 0
-        if name == 'eeprom_read':
+        if callable(name):              # Python stub: fn(emu, r0, r1, r2) -> r0
+            ret = name(self, *r) or 0
+        elif name == 'eeprom_read':
             if isinstance(self.eeprom, int):
                 ret = self.eeprom
             else:

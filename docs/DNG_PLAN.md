@@ -242,7 +242,7 @@ REA (only from github.com/morluto/rea or npm `rea-agents`) if wanted.
 | Same, with full per-shot metadata (exposure, ISO, date, lens, WB preset) | ~55–65% | **~80%** (was 65% before the metadata trace) |
 | No brick needing Leica/serial | ~95–97% | **~98%** |
 | Bootloader and SD updater untouched | ~99% | **~99%+** |
-| Can always reflash stock from SD | — | **~97%** (≈99% after rollback drill) |
+| Can always reflash stock from SD | — | **~99%** (patched → stock tested 2026-10-20) |
 
 What moved it: format proven in Lightroom with the exact in-camera layout; save path mapped (CPU
 builds header, memcpy RAW producer, last-block hook, no file-size change); 1.6 KB reclaimable
