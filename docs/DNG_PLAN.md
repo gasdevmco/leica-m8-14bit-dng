@@ -208,7 +208,14 @@ Cloudy/Shadow/Flash/Kelvin). No per-shot pixel statistics.
    import, then bursts; after any anomaly pull the battery first.
 
 **Before stage 1 (no new firmware needed):** rollback drill (patched → stock → patched);
-scratch-card playback test with our DNG (pair + lone copy) on the current build.
+scratch-card playback test with our DNG (pair + lone copy) on the current build:
+- Card: scratch card formatted in camera, one throwaway shot (creates `DCIM/100LEICA`). Copy
+  `sampleraws/L1031902.JPG` + `L1031902.DNG` (pair) and a copy of the DNG as `L1039999.DNG`
+  (lone) into `DCIM/100LEICA/` with `cp -X` (or `dot_clean` the card: no macOS `._` files). Eject.
+- Camera: playback → pair (expect JPG preview; open info screen) → lone DNG (the real test) →
+  delete the lone DNG in camera → power-cycle with card in → one normal shot.
+- Freeze → pull battery, remove card, boot without it. Lone DNG misbehaves → add a small thumbnail
+  to the template before stage 5.
 
 **Deferred until stage 4 works (tuning, not implementation):**
 - [ ] **Lens-cap dark frames** for the black-level constants. Lens cap on, JPG fine+RAW,
