@@ -265,13 +265,30 @@ scratch-card playback test with our DNG (pair + lone copy) on the current build:
   at 3964×2642 (third decoder after Lightroom and LibRaw); Finder icons look dark because the
   scene is mostly dark.
 
-**Deferred until stage 4 works (tuning, not implementation):**
+**To do — in-camera DNG improvements (stage 4 works; each = template/slot change, re-emulate, flash):**
 - [ ] **Lens-cap dark frames** for the black-level constants. Lens cap on, JPG fine+RAW,
   ~1/250 s, one frame each at ISO 160 and ISO 2500 (ideally also 320/640/1250), keep the
   JPGs. Copy RAW+JPG pairs into `sampleraws/`. Answers two questions:
   (a) is black the same in all four CFA channels (green slightly high?) and
   (b) does it scale with ISO (original m8raw2dng writes 92 × gain 1/2/4/8/16; m8raw2dng2 a
   flat 92). Result: a ≤5-entry constant table indexed by ISO, baked into the template.
+  **Easy.** Firmware side: dng_hook looks up ISO (job+0x66, already camera-verified) in the table
+  and writes the BlackLevel value (one more slot, or 4 per-channel values if (a) says so). If the
+  answer is "flat 92 everywhere", nothing changes.
+- [ ] **White balance preset → AsShotNeutral.** Map the camera's WB setting (Auto, Daylight,
+  Tungsten, Fluorescent, Cloudy, Shade, Flash, Kelvin) to a small constant table of neutrals, so
+  Lightroom opens near the camera's setting instead of fixed daylight. **Moderate.** Needs: where
+  the WB setting lives at save time (profile record in the settings block, or in S / the
+  MakerNote values at S+0x74–0x88): flash stage 3 once (its dump holds the job and settings
+  block) with a few frames at known WB settings; then the neutral for each preset (from Leica's
+  in-camera DNGs or m8raw2dng2's handling). Auto WB has no fixed neutral — keep daylight or use
+  the camera's computed value if one is found in the dump.
+- [ ] **Leica MakerNote (and body serial).** Copy the camera's 220-byte MakerNote (writer 0x6C630;
+  "LEICA" header, tags 0x300–0x340 incl. body serial 0x303) into the EXIF IFD, as m8raw2dng2 does
+  from the JPG. **Moderate.** Needs: where the finished MakerNote bytes (or their source values
+  S+0x74–0x88) are in memory when the hook runs — again from a stage-3 dump — and ~250 bytes more
+  in `ldimg` (150 free today: may need the template trimmed or a second reclaimed command, e.g.
+  `bf_memtest1`). Gives Lightroom lens/serial info that the plain EXIF lacks.
 
 Optional tooling: Ghidra on the Mac (processor ARM:LE:32:v5t, base 0x20000) for decompilation;
 REA (only from github.com/morluto/rea or npm `rea-agents`) if wanted.
