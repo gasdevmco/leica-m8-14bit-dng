@@ -216,6 +216,10 @@ scratch-card playback test with our DNG (pair + lone copy) on the current build:
   delete the lone DNG in camera → power-cycle with card in → one normal shot.
 - Freeze → pull battery, remove card, boot without it. Lone DNG misbehaves → add a small thumbnail
   to the template before stage 5.
+- **Result 2026-10-20:** with our DNG (and RAW) next to the camera's JPG, playback shows the preview
+  normally. Lone-DNG case not yet tested. macOS (Quick Look / sips) also decodes our DNG correctly
+  at 3964×2642 (third decoder after Lightroom and LibRaw); Finder icons look dark because the
+  scene is mostly dark.
 
 **Deferred until stage 4 works (tuning, not implementation):**
 - [ ] **Lens-cap dark frames** for the black-level constants. Lens cap on, JPG fine+RAW,
