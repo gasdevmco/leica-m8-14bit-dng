@@ -136,8 +136,11 @@ work/venv/bin/pip install unicorn capstone`). The same harness is the base for t
   `+0x21A` byte → "BIA", `+0x150`==1 → "DNG" (type 2), `+0x14C`==1 → "JPG" (type 1),
   `+0x154`==1 → "RAW" (type 0); type stored at `ctx+0x4638`. Extension strings: "RAW" = 0xD6590
   (tail of `\DCIM\100LEICA\L1000001.RAW`), "BIA" 0xD7CD8, "DNG" 0xD6570, "JPG" 0xD6638.
-  0x8817C builds the file name; **0x90F9C(out, name, size) creates the file with its final size up
-  front** (size from job: RAW +0x16C, DNG +0x164, JPG +0x168).
+  0x8817C builds the file name; 0x90F9C(out, type, size) **returns the image geometry** for the
+  type (8 bytes from a cached table; RAW = 3976 samples × 2647 rows → header u16 14/15, 10/11) —
+  corrected 2026-10-20, it does not create the file. The file is opened via the vtable call at
+  0x3CC20 (`[ctx+0x4210]` +8), returning 0 on success. Size args from job: RAW +0x16C, DNG +0x164,
+  JPG +0x168. 0xCACB0 = unsigned modulo (ring wrap).
 - **The 108-byte RAW header is written by PXA CPU code**, 0x3CE48–0x3CF0C, into the output ring
   buffer: u16 [0]=0xFFFF (`mvn r0,#0` at 0x3CE80 / `strh` 0x3CE94), [1]=0x0C (0x3CE9C), [2]=0x36
   (0x3CE98), [3]=7 (0x3CEA0), [10]/[11] and [14]/[15] from ctx+0x422C / 0x4228 bytes, [16..18] from
@@ -156,8 +159,8 @@ work/venv/bin/pip install unicorn capstone`). The same harness is the base for t
     0x0141 are not ARM immediates); the header block's zero stores could be repacked in place to
     make room (no reclaimed space needed). To verify.
   - **IFD placement idea:** the trailing stride row (last 7,952 bytes, ignored junk) could hold the
-    ~750-byte IFD template → file size unchanged, no change to file creation (0x90F9C / job
-    size fields untouched). Needs a hook where the last chunk is committed (0x3C5A8/0x3C6B4/0x3C800).
+    ~750-byte IFD template → file size unchanged, no change to file opening (0x3CC20) or job
+    size fields. Needs a hook where the last chunk is committed (0x3C5A8/0x3C6B4/0x3C800).
 - Header fields decoded: u16 [10]/[11] = bytes of `ctx+0x422C` = **2647 rows**; [14]/[15] = bytes
   of `ctx+0x4228` = **3976 samples/row** (row bytes after `<<1` at 0x3CF18). The "trailing row" is
   sensor row 2647, delivered in the last DMA block (blocks of 16 rows; 166 blocks, last = 7 rows).
@@ -176,7 +179,7 @@ work/venv/bin/pip install unicorn capstone`). The same harness is the base for t
 - File extension: "RAW" at 0xD6590 is shared with the debug path string; changing it to "DNG" is a
   3-byte data change. In JPG fine+RAW mode this gives JPG+DNG pairs like the stock DNG+JPG mode;
   camera playback/card-scan behaviour with our DNG layout is untested (harness test first).
-- Open: what 0x90F9C returns; the card-writer task; header rewrite at 0x3CE48 to fit the TIFF
+- Open: the card-writer task; header rewrite at 0x3CE48 to fit the TIFF
   header (repack zero stores).
 
 ## Reclaimable space: debug-shell commands (2026-10-19, `tools/m8_reclaim.py`)
