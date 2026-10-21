@@ -16,7 +16,8 @@ Lightroom opens natively as an M8 file — no m8raw2dng2 conversion step, no Lig
 ## 1. Why this looks feasible
 
 - The camera already captures and saves the full 14-bit sensor data in RAW mode (the `.RAW` dump).
-- It already has a DNG writer (8-bit, companded via a stored linearization table) and full
+- It already has a DNG writer (8-bit: black subtracted and clipped, square-root companded; see
+  FINDINGS "Camera's own 8-bit DNG") and full
   per-shot metadata (it writes EXIF + Leica MakerNote into the JPG).
 - The tonight-proven facts (2026-10-19): the camera accepts and runs a modified PXA image;
   RAW mode works outside service mode and at startup; the static analysis map is accurate.

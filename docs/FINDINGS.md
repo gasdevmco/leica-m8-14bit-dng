@@ -418,6 +418,33 @@ stage 3 checks the real offsets on the camera).
   list not traced. The DNG reader still runs for a lone DNG (JPG deleted elsewhere) and maybe the
   info screen ("DNG + %s", 0x47574) — keep the emulator test before the rename.
 
+## Camera's own 8-bit DNG vs the 14-bit data (file analysis, 2026-10-21)
+
+From `fromcameraimports/L1031921.DNG` (camera DNG mode, ISO 160) compared with the stage-5 14-bit file
+L1031919 (ISO 160, different scene). File-level evidence only; the firmware routines were not read.
+- **Layout:** IFD0 = 320×240 RGB thumbnail (per-shot AsShotNeutral, ColorMatrix1/2 as ours, no
+  BlackLevel); SubIFD = raw CFA 3920×2638, 8 bits/sample, uncompressed, strips of 16 rows, crop
+  origin (2,2) size 3916×2634, WhiteLevel 16383, BayerGreenSplit 500.
+- **Companding:** LinearizationTable (256 entries) is exactly `floor(code² / 4)` (0, 0, 1, 2, 4, 6,
+  9, 12 … 16129, 16256) → the camera stores ≈ 2·√value: square-root companding. Code 1 never
+  occurs (decodes to 0 like code 0). Quantization step ≈ √value, about the size of the shot noise at
+  ISO 160 (var/mean ≈ 0.65 in the 14-bit file); the 14-bit file has 64× finer steps.
+- **Black:** subtracted before companding and **clipped at 0** — 5.9 % of the 8-bit file's pixels are
+  exactly 0, while the 14-bit file's darkest 0.1 % per channel are 72–79 (pedestal ≈ 92). Noise below
+  black is discarded → deep shadows lose information and are biased slightly bright.
+- **Crop:** 3920×2638 written (48 columns / 8 rows fewer than the 3968×2646 active area).
+- **No spatial noise reduction detected:** correlation of neighbouring same-colour pixel differences
+  in 138 flat dark patches = −0.493 (white noise −0.500; smoothing would move it toward 0); the
+  14-bit file gives −0.467. No demosaic, sharpening or colour processing either (still CFA data, same
+  colour matrices).
+- **Where the encode table lives: not confirmed.** `LUTS_GAMMA` (31,760 bytes) is not a 14→8 table:
+  a header, a reciprocal table (16384/n: 2048, 1820, 1638 …) and float constants (0.9, 2.6 …) —
+  looks like JPEG-pipeline tone parameters. The DNG producer calls 0x76A3C (companding, not read);
+  the table may be computed at runtime.
+- Not ruled out: a subtle correction applied in both modes or only in DNG mode (e.g. defect-column
+  repair). Definitive test (deferred): same tripod scene in DNG mode and JPG fine+RAW, plus a
+  lens-cap pair; apply black → clip → table to the 14-bit file and compare pixel for pixel.
+
 ## Known 2.024 issue
 
 Some bodies stop saving images after 2.024 (LED blinks, nothing written). Fixed for some
