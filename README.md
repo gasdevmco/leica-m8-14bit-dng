@@ -20,81 +20,82 @@ and refuses anything else.
 
 ## Contents
 
-- [What you get](#what-you-get)
+- [Choose an option](#choose-an-option)
 - [Requirements](#requirements)
-- [Build a firmware file](#build-a-firmware-file)
+- [Build your firmware file](#build-your-firmware-file)
 - [Flash it](#flash-it)
 - [Safety and recovery](#safety-and-recovery)
 - [Known limitations](#known-limitations)
 - [How it works](#how-it-works)
+- [For developers](#for-developers)
 - [Testing without a camera](#testing-without-a-camera)
 - [Repository layout](#repository-layout)
 - [Credits](#credits)
 - [License](#license)
 
-## What you get
+## Choose an option
 
-| Build | Script | What it changes | Tested on hardware |
-|---|---|---|---|
-| **Persistent RAW** | `tools/m8_rawpatch.py` | 5 bytes: "JPG fine+RAW" listed in SET → Compression and kept across power cycles | 2.014: yes. 2.024: same code, not tested |
-| **In-camera DNG** (stage 4) | `tools/m8_dngpatch.py --stage 4` | The RAW patch plus 1,634 bytes: TIFF header, DNG tag block, small routine in unused debug-command space | 2.014 only: yes |
+| | Option 1: `raw-menu` | Option 2: `dng` |
+|---|---|---|
+| What it does | "JPG fine+RAW" appears in SET → Compression and stays selected after power-off | Option 1, plus the camera writes the raw file as a **14-bit DNG** |
+| What you get per shot | JPG + the camera's 14-bit `.RAW` dump; convert it with [m8raw2dng2](https://github.com/botrx555/m8raw2dng2) | JPG + a `.RAW` file that **Lightroom opens directly**, with exposure, ISO and date (no conversion) |
+| Firmware | 2.014 (camera-tested) or 2.024 (same change, not camera-tested) | 2.014 only (camera-tested) |
+| Size of the change | 5 bytes | 5 bytes + 1,634 bytes of new code and data |
 
-With the DNG build, each JPG fine+RAW shot produces:
+Pick Option 1 if you're happy converting files on the computer, or if your camera runs 2.024. Pick
+Option 2 to open the files in Lightroom straight from the card.
+
+With Option 2, each JPG fine+RAW shot produces:
 
 - `L10xxxxx.JPG`: the camera's normal JPG, used by in-camera review.
 - `L10xxxxx.RAW`: 21,049,052 bytes. Its contents are a complete 14-bit DNG (uncompressed CFA, M8
-  colour matrices, white level 16383, black level 92), plus exposure time, exposure program, ISO,
+  colour matrices, white level 16383, black level 92) with exposure time, exposure program, ISO,
   shutter value, exposure bias, max aperture, focal length and date from the shot. Lightroom opens
-  the `.RAW` file as is. For other software, rename the extension to `.DNG`.
+  the `.RAW` file as is; for other software, rename the extension to `.DNG`. It still converts with
+  m8raw2dng2 too.
 
-The other Compression modes (JPG fine, JPG basic, DNG, DNG+JPG) are unchanged stock code. Switching
-to one of them turns the new code off completely.
+With either option, the other Compression modes (JPG fine, JPG basic, DNG, DNG+JPG) are unchanged
+stock code. Switching to one of them turns the new code off completely.
 
 ## Requirements
 
-- A Leica M8 running firmware **2.014**. The DNG build only exists for 2.014.
-- The stock update file `m8-2_014.upd`, SHA-256
-  `99f5254847a92c68086f37b1a4140c359379801b479df12052136abb73f09ed0`. For the RAW patch on 2.024:
-  `m8-2_024.upd`, SHA-256 `95dbb319ba6b2d675437853402a8bbabe8e96796b74a52ed325fa5c8b3f68acb`.
-- Python 3 (developed on macOS). The patch scripts need only the standard library and Capstone; the
-  emulator tests need Unicorn.
-- Optional, only to change the assembly: an ARM-capable clang (Apple clang works).
+- A Leica M8 running firmware **2.014** (or 2.024 for Option 1).
+- Leica's stock update file for that version, unmodified:
+  - `m8-2_014.upd`, SHA-256 `99f5254847a92c68086f37b1a4140c359379801b479df12052136abb73f09ed0`
+  - `m8-2_024.upd`, SHA-256 `95dbb319ba6b2d675437853402a8bbabe8e96796b74a52ed325fa5c8b3f68acb`
+- Python 3 (any recent version; the one built into macOS works). Nothing else to install.
+
+## Build your firmware file
+
+Download or clone this repository, then run, with the path to your stock file:
 
 ```sh
-python3 -m venv work/venv
-work/venv/bin/pip install -r requirements.txt
+python3 m8patch.py raw-menu  ~/Downloads/m8-2_014.upd     # Option 1
+python3 m8patch.py dng       ~/Downloads/m8-2_014.upd     # Option 2
 ```
 
-## Build a firmware file
+The script:
 
-Put the stock file at `firmware/stock/m8-2_014.upd`, then run one of the following.
+- only reads your stock file and never changes it;
+- refuses anything that isn't an unmodified Leica 2.014 / 2.024 file;
+- writes the result to `build/m8-2_014-raw-menu.upd` or `build/m8-2_014-dng.upd`. It never
+  overwrites an existing file; `--out-dir DIR` writes somewhere else;
+- writes it only if it is byte-identical to the build tested by the author, and prints its SHA-256
+  and the next steps.
 
-```sh
-# Persistent RAW only
-python3 tools/m8_rawpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014.upd
-
-# In-camera DNG (includes the RAW patch)
-work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd \
-    firmware/patched/m8-2_014-stage4.upd --stage 4
-```
-
-Each script prints every changed instruction, checks that nothing outside the declared regions
-changed, and prints the output's SHA-256. Compare it with the expected builds:
-
-| Build | SHA-256 |
+| Result | SHA-256 |
 |---|---|
-| Persistent RAW, 2.014 | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
-| Persistent RAW, 2.024 (untested on hardware) | `6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e` |
-| In-camera DNG, stage 4, 2.014 | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` |
-
-If your hash differs, don't flash the file.
+| Option 1, 2.014 | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
+| Option 1, 2.024 (not camera-tested) | `6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e` |
+| Option 2, 2.014 | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` |
 
 ## Flash it
 
 1. **Fully charged battery.**
 2. Keep a **second card holding only the stock `m8-2_014.upd`**, ready to roll back.
-3. Format a card in the camera. Copy the built file to it as **`M8-2_014.UPD`**: the updater looks
-   for `M8.UPD` or `M8-x_yyy.UPD`.
+3. Format a card in the camera and copy the built file from `build/` onto it. **On the card, rename
+   it to `M8-2_014.UPD`** (`M8-2_024.UPD` for a 2.024 build): the updater only looks for `M8.UPD` or
+   `M8-x_yyy.UPD`. Rename the copy on the card, not your stock file.
 4. Run the camera's normal firmware update, the same as for Leica's own file. The progress bar
    usually pauses around 60% before completing. **Don't touch the battery or card while it runs.**
 5. After the restart: SET → Compression → **JPG fine+RAW**. Take a test shot and check it on the
@@ -117,23 +118,24 @@ patched → stock → patched on hardware. Before sending the camera to Leica fo
 
 1. **Pull the battery first.** Not the power switch, and don't remove the card. Power-state changes
    and card insert/remove make the camera save its settings; a battery pull saves nothing.
-2. Power on, set Compression to **JPG fine** (the new code never runs then), and reflash stock or the
-   RAW-only build.
+2. Power on, set Compression to **JPG fine** (the new code never runs then), and reflash stock or
+   Option 1.
 
 ## Known limitations
 
 - **Tested on one camera.** Single shots, power cycles, and continuous shooting until the buffer
-  fills (on the RAW-only build) are tested; the DNG build hasn't had the full burst test yet.
-- **Files are named `.RAW`, not `.DNG`.** A build that names them `.DNG` exists (stage 5), but on the
-  camera, review of a JPG + `.DNG` pair then shows only the DNG's file name and can't reach the JPG,
-  because these DNGs have no embedded preview. Stage 4 keeps in-camera review working normally.
+  fills (on Option 1) are tested; Option 2 hasn't had the full burst test yet.
+- **Option 2's files are named `.RAW`, not `.DNG`.** A build that names them `.DNG` exists (stage 5,
+  for developers), but on the camera, review of a JPG + `.DNG` pair then shows only the DNG's file
+  name and can't reach the JPG, because these DNGs have no embedded preview. Keeping `.RAW` keeps
+  in-camera review working normally.
 - **White balance:** Lightroom starts from a fixed daylight balance (Auto and the presets work
   normally); the camera's WB setting isn't carried over yet.
 - **Black level:** a constant 92 at every ISO. A per-ISO table from dark frames is planned.
 - **Not included yet:** lens name, body serial, the Leica MakerNote, and an embedded preview.
 - **`.BIA` dark frames** (written for long exposures) also get the TIFF header bytes, but no DNG tags.
   Converters that skip the header, such as m8raw2dng2, aren't affected.
-- The **RAW-only patch on 2.024** uses the same code at the same addresses but is untested on
+- **Option 1 on 2.024** uses the same code at the same addresses but is untested on
   hardware. Some bodies are reported to stop saving images on 2.024 regardless; 2.014 is recommended.
 
 ## How it works
@@ -161,6 +163,22 @@ Every address, offset and decision, with the evidence for it, is in
 [`docs/FINDINGS.md`](docs/FINDINGS.md). The design, staging and risk assessment are in
 [`docs/DNG_PLAN.md`](docs/DNG_PLAN.md).
 
+## For developers
+
+`m8patch.py` is a thin front end. The builds come from the tools in `tools/`:
+
+- `tools/m8_rawpatch.py` builds Option 1. `--no-menu` keeps the hidden button sequence for
+  selecting RAW but still makes the choice stick.
+- `tools/m8_dngpatch.py --stage N` builds the staged DNG builds; Option 2 is stage 4. The others are
+  kept for diagnosis: 1 = header canary, 2 = new code present but not hooked in, 3 = metadata dump,
+  5 = `.DNG` names. It prints every changed instruction and checks that nothing outside the
+  declared regions changed.
+
+```sh
+python3 -m venv work/venv && work/venv/bin/pip install -r requirements.txt   # Capstone, Unicorn, …
+work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014-stage4.upd --stage 4
+```
+
 ## Testing without a camera
 
 Two Unicorn-based emulator suites run the real firmware code from the stock file:
@@ -183,6 +201,7 @@ names. `m8_emutest.py` needs the RAW-patch build at `firmware/patched/m8-2_014.u
 
 | Path | Contents |
 |---|---|
+| `m8patch.py` | Build Option 1 or Option 2 from your stock file (start here) |
 | `tools/m8_rawpatch.py` | Persistent-RAW patch (2.014 / 2.024) |
 | `tools/m8_dngpatch.py` | In-camera DNG builds (`--stage 1…5`), with region and hash checks |
 | `tools/asm/` | Assembly source of the new code (`m8_header.s`, `m8_dnghook.s`) |
@@ -193,10 +212,7 @@ names. `m8_emutest.py` needs the RAW-patch build at `firmware/patched/m8-2_014.u
 | `tools/armtools.py`, `tools/split_upd.py`, `tools/ghidra/` | Analysis helpers |
 | `docs/FINDINGS.md` | Reverse-engineering notes: addresses, formats, hardware test log |
 | `docs/DNG_PLAN.md` | Design and staged plan for the in-camera DNG |
-| `firmware/`, `sampleraws/`, `work/` | Local only (git-ignored): firmware files, camera samples, scratch |
-
-The staged builds that led to stage 4 are kept for diagnosis: 1 = header canary, 2 = new code present
-but not hooked in, 3 = metadata dump, 5 = `.DNG` names.
+| `firmware/`, `build/`, `sampleraws/`, `work/` | Local only (git-ignored): firmware files, build output, camera samples, scratch |
 
 ## Credits
 

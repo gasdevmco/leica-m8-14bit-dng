@@ -16,3 +16,4 @@ fromcameraimports/
 *.JPG
 *.jpg
 *.BIA
+build/
