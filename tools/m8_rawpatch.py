@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Leica M8 firmware 2.014 / 2.024 -- "persistent RAW" patch.
+Leica M8 firmware 2.014 -- "persistent RAW" patch.
 
 Status:
   2.014, P1+P2+P3   tested on hardware (2026-10-19) and in tools/m8_emutest.py.
   2.014 --no-menu   emulator-tested only.
-  2.024             untested on hardware (same code; static analysis only).
 Flashing modified firmware can brick the camera. Rollback = flash the stock file.
 
-Patches the PXA (Intel XScale / ARM, load base 0x20000) section of m8-2_014.upd or m8-2_024.upd
-(identical code at identical addresses in both versions):
+Patches the PXA (Intel XScale / ARM, load base 0x20000) section of m8-2_014.upd.
+Only 2.014 is supported (the only version tested); any other input is refused.
 
   P1 0x2191C  beq 0x21944 -> nop
       Settings-load-from-EEPROM routine: if compression == 5 (JPG fine+RAW)
@@ -28,12 +27,10 @@ Usage: python3 m8_rawpatch.py m8-2_0xx.upd out.upd [--no-menu]
 import hashlib, struct, sys
 
 KNOWN_INPUTS = {  # stock Leica files this patch was verified against
-    "95dbb319ba6b2d675437853402a8bbabe8e96796b74a52ed325fa5c8b3f68acb": "2.024",
     "99f5254847a92c68086f37b1a4140c359379801b479df12052136abb73f09ed0": "2.014",
 }
 KNOWN_OUTPUTS = {  # full-patch outputs (see FINDINGS)
     "f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396": "2.014, tested on hardware",
-    "6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e": "2.024, untested on hardware",
 }
 PXA_BASE = 0x20000
 
@@ -63,7 +60,7 @@ def main():
     data = bytearray(open(src, "rb").read())
     ver = KNOWN_INPUTS.get(hashlib.sha256(data).hexdigest())
     if not ver:
-        raise SystemExit("input is not a stock m8-2_014.upd or m8-2_024.upd this patch was made for")
+        raise SystemExit("input is not the stock m8-2_014.upd this patch was made for (only 2.014 is supported)")
     print("input: stock firmware", ver)
     pxa_pos, pxa_size = find_lump(data, b"PXA")
     for name, va, old, new in PATCHES:

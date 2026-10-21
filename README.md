@@ -39,11 +39,11 @@ and refuses anything else.
 |---|---|---|
 | What it does | "JPG fine+RAW" appears in SET → Compression and stays selected after power-off | Option 1, plus the camera writes the raw file as a **14-bit DNG** |
 | What you get per shot | JPG + the camera's 14-bit `.RAW` dump; convert it with [m8raw2dng2](https://github.com/botrx555/m8raw2dng2) | JPG + a `.RAW` file that **Lightroom opens directly**, with exposure, ISO and date (no conversion) |
-| Firmware | 2.014 (camera-tested) or 2.024 (same change, not camera-tested) | 2.014 only (camera-tested) |
+| Firmware | 2.014 (camera-tested) | 2.014 (camera-tested) |
 | Size of the change | 5 bytes | 5 bytes + 1,634 bytes of new code and data |
 
-Pick Option 1 if you're happy converting files on the computer, or if your camera runs 2.024. Pick
-Option 2 to open the files in Lightroom straight from the card.
+Pick Option 1 if you're happy converting files on the computer. Pick Option 2 to open the files in
+Lightroom straight from the card.
 
 With Option 2, each JPG fine+RAW shot produces:
 
@@ -59,10 +59,10 @@ stock code. Switching to one of them turns the new code off completely.
 
 ## Requirements
 
-- A Leica M8 running firmware **2.014** (or 2.024 for Option 1).
-- Leica's stock update file for that version, unmodified:
-  - `m8-2_014.upd`, SHA-256 `99f5254847a92c68086f37b1a4140c359379801b479df12052136abb73f09ed0`
-  - `m8-2_024.upd`, SHA-256 `95dbb319ba6b2d675437853402a8bbabe8e96796b74a52ed325fa5c8b3f68acb`
+- A Leica M8 running firmware **2.014**, the only version these patches are made and tested for.
+- Leica's stock 2.014 update file, unmodified: `m8-2_014.upd`, SHA-256
+  `99f5254847a92c68086f37b1a4140c359379801b479df12052136abb73f09ed0`. The same file is used to
+  return to stock, and a camera on another version can be moved to 2.014 with it.
 - Python 3 (any recent version; the one built into macOS works). Nothing else to install.
 
 ## Build your firmware file
@@ -77,7 +77,7 @@ python3 m8patch.py dng       ~/Downloads/m8-2_014.upd     # Option 2
 The script:
 
 - only reads your stock file and never changes it;
-- refuses anything that isn't an unmodified Leica 2.014 / 2.024 file;
+- refuses anything that isn't Leica's unmodified 2.014 file;
 - writes the result to `build/m8-2_014-raw-menu.upd` or `build/m8-2_014-dng.upd`. It never
   overwrites an existing file; `--out-dir DIR` writes somewhere else;
 - writes it only if it is byte-identical to the build tested by the author, and prints its SHA-256
@@ -86,7 +86,6 @@ The script:
 | Result | SHA-256 |
 |---|---|
 | Option 1, 2.014 | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
-| Option 1, 2.024 (not camera-tested) | `6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e` |
 | Option 2, 2.014 | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` |
 
 ## Flash it
@@ -94,8 +93,7 @@ The script:
 1. **Fully charged battery.**
 2. Keep a **second card holding only the stock `m8-2_014.upd`**, ready to roll back.
 3. Format a card in the camera and copy the built file from `build/` onto it. **On the card, rename
-   it to `M8-2_014.UPD`** (`M8-2_024.UPD` for a 2.024 build): the updater only looks for `M8.UPD` or
-   `M8-x_yyy.UPD`. Rename the copy on the card, not your stock file.
+   it to `M8-2_014.UPD`**: the updater only looks for `M8.UPD` or `M8-x_yyy.UPD`. Rename the copy on the card, not your stock file.
 4. Run the camera's normal firmware update, the same as for Leica's own file. The progress bar
    usually pauses around 60% before completing. **Don't touch the battery or card while it runs.**
 5. After the restart: SET → Compression → **JPG fine+RAW**. Take a test shot and check it on the
@@ -135,8 +133,7 @@ patched → stock → patched on hardware. Before sending the camera to Leica fo
 - **Not included yet:** lens name, body serial, the Leica MakerNote, and an embedded preview.
 - **`.BIA` dark frames** (written for long exposures) also get the TIFF header bytes, but no DNG tags.
   Converters that skip the header, such as m8raw2dng2, aren't affected.
-- **Option 1 on 2.024** uses the same code at the same addresses but is untested on
-  hardware. Some bodies are reported to stop saving images on 2.024 regardless; 2.014 is recommended.
+- **Firmware 2.014 only.** Other versions haven't been tested, and the scripts refuse them.
 
 ## How it works
 
@@ -202,7 +199,7 @@ names. `m8_emutest.py` needs the RAW-patch build at `firmware/patched/m8-2_014.u
 | Path | Contents |
 |---|---|
 | `m8patch.py` | Build Option 1 or Option 2 from your stock file (start here) |
-| `tools/m8_rawpatch.py` | Persistent-RAW patch (2.014 / 2.024) |
+| `tools/m8_rawpatch.py` | Persistent-RAW patch (2.014) |
 | `tools/m8_dngpatch.py` | In-camera DNG builds (`--stage 1…5`), with region and hash checks |
 | `tools/asm/` | Assembly source of the new code (`m8_header.s`, `m8_dnghook.s`) |
 | `tools/m8_asm.py` | Assembles one source with clang and checks it against the frozen bytes |

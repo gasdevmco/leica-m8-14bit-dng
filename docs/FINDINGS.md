@@ -122,7 +122,11 @@ Identical code at identical addresses in 2.014 and 2.024 (file offsets differ by
 | Patched file | SHA-256 |
 |---|---|
 | `firmware/patched/m8-2_014.upd` | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
-| `firmware/patched/m8-2_024.upd` | `6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e` |
+| `firmware/patched/m8-2_024.upd` | `6c411873891a965d03ad83f1bcb9b2030329595a4d00848cf369eaec45a9c94e` (historical; never camera-tested) |
+
+**2026-10-21: 2.024 is no longer supported.** It was never tested on a camera, so the user script
+(`m8patch.py`) and `tools/m8_rawpatch.py` accept only the stock 2.014 file. The 2.024 notes in this
+file are research (version comparison, known issue), not a statement of support.
 
 Test plan: full battery, card formatted in camera, only the patched file on it. Select
 JPG fine+RAW, shoot, power-cycle, confirm SET still shows it, convert with m8raw2dng2.
