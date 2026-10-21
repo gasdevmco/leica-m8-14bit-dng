@@ -20,6 +20,7 @@ and refuses anything else.
 
 ## Contents
 
+- [Why 14-bit?](#why-14-bit)
 - [Choose an option](#choose-an-option)
 - [Requirements](#requirements)
 - [Build your firmware file](#build-your-firmware-file)
@@ -32,6 +33,32 @@ and refuses anything else.
 - [Repository layout](#repository-layout)
 - [Credits](#credits)
 - [License](#license)
+
+## Why 14-bit?
+
+The M8's own DNG mode doesn't store what the sensor recorded. Analysis of its files (details in
+[`docs/FINDINGS.md`](docs/FINDINGS.md), "Camera's own 8-bit DNG") shows that before saving, the camera:
+
+- **subtracts the black level and clips everything below it to zero.** In a test frame, about 6% of
+  all pixels were exactly 0. The faint noise and detail just above and below black are thrown away.
+- **compresses the remaining range to 8 bits (256 levels)** with a square-root curve.
+
+Apart from that it's still raw data: no noise reduction, sharpening or demosaicing.
+
+The 14-bit file keeps every sensor value: 16,384 levels, with black recorded as metadata instead of
+cut off. In practice that means:
+
+- **Better shadow recovery.** When you lift dark areas, the 14-bit file has real tonal data and
+  natural noise there, instead of clipped, blotchy blacks.
+- **Smoother gradients under heavy edits.** The 8-bit file's steps are about as large as the sensor
+  noise at base ISO, which hides them in normal use. Strong curves or large exposure pushes can turn
+  them into banding in skies and smooth surfaces; the 14-bit file has 64× finer steps.
+- **More room for later processing.** Lightroom's denoise and black-level adjustments, or tools like
+  m8raw2dng2's dark-frame corrections, work from the untouched data.
+
+At normal exposure with moderate edits, the two look very similar: the difference shows when you
+push a file. The cost is size. A 14-bit raw is about 21 MB, twice the camera's DNG, so cards fill
+faster and each shot takes longer to save.
 
 ## Choose an option
 
