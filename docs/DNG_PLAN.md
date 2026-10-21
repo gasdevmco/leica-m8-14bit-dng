@@ -276,14 +276,16 @@ scratch-card playback test with our DNG (pair + lone copy) on the current build:
   **Easy.** Firmware side: dng_hook looks up ISO (job+0x66, already camera-verified) in the table
   and writes the BlackLevel value (one more slot, or 4 per-channel values if (a) says so). If the
   answer is "flat 92 everywhere", nothing changes.
-- [ ] **White balance preset → AsShotNeutral.** Map the camera's WB setting (Auto, Daylight,
-  Tungsten, Fluorescent, Cloudy, Shade, Flash, Kelvin) to a small constant table of neutrals, so
-  Lightroom opens near the camera's setting instead of fixed daylight. **Moderate.** Needs: where
-  the WB setting lives at save time (profile record in the settings block, or in S / the
-  MakerNote values at S+0x74–0x88): flash stage 3 once (its dump holds the job and settings
-  block) with a few frames at known WB settings; then the neutral for each preset (from Leica's
-  in-camera DNGs or m8raw2dng2's handling). Auto WB has no fixed neutral — keep daylight or use
-  the camera's computed value if one is found in the dump.
+- [ ] **Per-shot white balance → AsShotNeutral — parked 2026-10-21** (owner: fine with Lightroom WB;
+  open for anyone to continue). State in FINDINGS "Per-shot white balance": the camera computes a
+  per-shot neutral in JPG fine+RAW mode (JPG MakerNote 0x322–0x324, rationals `16384/x`, exactly the
+  DNG form, which m8raw2dng2 copies); the camera's own DNG writer takes it from object+0x12D0
+  (0x6CBB4); the JPG MakerNote is not built by the PXA tag writers (probably the Blackfin), so where
+  the value sits in PXA memory at hook time — if at all — is unknown. Options, in order: (1) test
+  build that scans known-mapped RAM read-only for the WB pattern and records hits in the trailing row,
+  compared on the desktop with the JPG's tags (one flash; then a one-slot change, room exists);
+  (2) desktop script copying the JPG's 0x322–0x324 into the DNG (no flash, extra step);
+  (3) preset → constant table (Auto stays daylight). The template already reserves the 24 bytes.
 - [ ] **Leica MakerNote (and body serial).** Copy the camera's 220-byte MakerNote (writer 0x6C630;
   "LEICA" header, tags 0x300–0x340 incl. body serial 0x303) into the EXIF IFD, as m8raw2dng2 does
   from the JPG. **Moderate.** Needs: where the finished MakerNote bytes (or their source values
