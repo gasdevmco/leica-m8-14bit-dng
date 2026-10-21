@@ -445,6 +445,27 @@ L1031919 (ISO 160, different scene). File-level evidence only; the firmware rout
   repair). Definitive test (deferred): same tripod scene in DNG mode and JPG fine+RAW, plus a
   lens-cap pair; apply black → clip → table to the 14-bit file and compare pixel for pixel.
 
+## Per-shot white balance (2026-10-21, static + file analysis, in progress)
+
+- **The camera computes a per-shot neutral in JPG fine+RAW mode too.** The JPG's Leica MakerNote tags
+  **0x322 / 0x323 / 0x324** hold it as rationals `16384/x` (R, G, B), the same form as DNG
+  AsShotNeutral (offsets inside the MakerNote are relative to MakerNote start + 8). L1031919.JPG:
+  16384/32656, 16384/16384, 16384/21856 (0.5017, 1, 0.7496); L1031902.JPG: 0.4641, 1, 0.8119.
+  m8raw2dng2 copies exactly these into its DNG's AsShotNeutral (fallback: fixed daylight).
+- **Camera DNG mode:** AsShotNeutral is written by **0x6CBB4** (DNG/EXIF writer class, vtable slot
+  0xED904) via tag writer 0x76D50 (tag, count) + 0x76E18 (copy value bytes): 24 bytes from
+  **object+0x12D0**, already rationals; the same method writes Orientation from object+0x12C2.
+  Nothing writes +0x12D0 directly (likely filled by a block copy). Which instance it is: not found.
+- **0x6C630 (camera-DNG EXIF/MakerNote writer, S = [writer+0xB0])** writes MakerNote 0x302–0x304,
+  0x310 (lens, S+0x9C), 0x311–0x313 (meter values: S+0x84/0x88, S+0x7C/0x80, S+0x74/0x78), 0x320
+  (S+0x134), 0x321 (S+0xC0), 0x325 (byte S+0xBD), 0x330–0x333 (S+0x138…0x144), 0x340 (S+0x18 + blob)
+  — **not 0x322–0x324**. Correction: S+0x74–0x88 are the meter values, not WB; S extends to ≥ +0x144.
+- A whole-image scan (constant evaluation at every call of the tag helpers 0x76218, 0x76334,
+  0x76384, 0x77D2C, 0x76D50, 0x78304, 0x76E18) finds no other writer of 0x320–0x326, and the byte
+  pattern of a 0x322 rational entry occurs in no lump. → **The JPG's MakerNote (with WB) is not built
+  by the PXA tag writers**; most likely the Blackfin DSP (JPEG pipeline, auto WB). Where the neutral
+  sits in PXA memory at hook time in JPG fine+RAW mode is unknown.
+
 ## Known 2.024 issue
 
 Some bodies stop saving images after 2.024 (LED blinks, nothing written). Fixed for some
