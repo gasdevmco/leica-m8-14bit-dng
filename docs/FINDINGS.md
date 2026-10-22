@@ -454,14 +454,18 @@ L1031919 (ISO 160, different scene). File-level evidence only; the firmware rout
 - **Observed:** Option 2 files at high ISO open in Lightroom increasingly lifted / washed out — our
   template writes BlackLevel 92 at every ISO.
 - **`fromcameraimports/L1031933.RAW` (ISO 1250, ISO slot read from our own DNG tags):** every sample
-  value is a multiple of 8 (exactly 50 % multiples of 16); at ISO 160 values are unquantised
-  (50.05 % even). → ISO 1250 = base reading × 8 **digitally**, pedestal included: **black = 92 × 8 =
-  736**. Darkest 0.1 % per CFA channel 688–784, minimums 528–592: black noise straddles 736.
+  value is a multiple of 8 (exactly 50 % multiples of 16); darkest 0.1 % per CFA channel 688–784,
+  minimums 528–592: black noise straddles 736 = 92 × 8.
+- **ISO series 2026-10-22, L1031944–48** (same scene, A mode, ISO 160/320/640/1250/2500, shot on
+  stage 4 `59aff4a3`, so BlackLevel 92 in all): darkest 0.1 % per channel (R/G/G/B) 123/134/135/104,
+  190/204/204/176, 348/360/364/328, 656/672/672/624, 1264/1280/1280/1216 — doubling per ISO step and
+  sitting at/just below 92 × gain, as black noise should. **The rule is confirmed on this camera.**
+- **Correction:** these five frames are **not** quantised (ISO 1250 included: values are not all
+  multiples of 8), unlike L1031933. So "higher ISO = pure digital ×2^n, one bit lost per step" is
+  not established; what differed in L1031933 is unknown. The black-level rule does not depend on it.
 - Matches the rule in Arvid Kuehl's m8raw2dng (`-b`) and m8raw2dng2 (`-s -b`): **BlackLevel = 92 ×
   gain, gain = 2^round(log2(ISO/160))** → 92 / 184 / 368 / 736 / 1472 for ISO 160 / 320 / 640 /
   1250 / 2500; unknown ISO → 1.
-- Consequence: each ISO step above 160 is ×2 digital gain, i.e. one bit fewer distinct levels (ISO
-  1250 ≈ 11 bits of levels stored in 14).
 - **Fix built (2026-10-21):** dng_hook writes BlackLevel = base × 2^(number of thresholds 226 / 452 /
   905 / 1810 the shot's ISO exceeds), from S+0x62; table in `tables+12..+27` generated from
   `m8_wrapdng.black_for_iso` (same rule as m8raw2dng2 for every ISO 160–2599; unknown/low ISO → 92;
