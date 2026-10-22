@@ -282,10 +282,10 @@ and compares):
 | Stage | Change | File | SHA-256 | Status |
 |---|---|---|---|---|
 | 1 | canary (file bytes 6–7 `07 00` → `a5 00`) | `firmware/patched/m8-2_014-stage1.upd` | `3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66` | emulator pass; **flashed, camera-tested 2026-10-20** |
-| 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `98011d7b48243917dee3807eda547719a50204f2576bea289d45c5473609a88b` | emulator 145/0; not flashed |
-| 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `c152d30593e52e41ebdb44f1b9573f5a113e5d52e34066d79fc6b48ead2dd526` | emulator 145/0; not flashed |
-| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` | emulator 145/0; not flashed (first version `3b451b4d…`, date slot wrong, **flashed 2026-10-20: Lightroom opens its files**) |
-| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `d9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66` | emulator 145/0; **flashed 2026-10-20, on the camera; Lightroom imports its DNGs** |
+| 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `ff6b3f63a0f2a8c7a6231cc98e53c6b977c63734a2ef16ea4a8e30a56d8d45e9` | emulator 145/0; not flashed |
+| 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca` | emulator 145/0; not flashed |
+| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **not yet flashed**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
+| 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce` | emulator 150/0; not flashed (previous `d9a94feb…` flashed 2026-10-20, rolled back: in-camera review) |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
 same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the
@@ -462,6 +462,11 @@ L1031919 (ISO 160, different scene). File-level evidence only; the firmware rout
   1250 / 2500; unknown ISO → 1.
 - Consequence: each ISO step above 160 is ×2 digital gain, i.e. one bit fewer distinct levels (ISO
   1250 ≈ 11 bits of levels stored in 14).
+- **Fix built (2026-10-21):** dng_hook writes BlackLevel = base × 2^(number of thresholds 226 / 452 /
+  905 / 1810 the shot's ISO exceeds), from S+0x62; table in `tables+12..+27` generated from
+  `m8_wrapdng.black_for_iso` (same rule as m8raw2dng2 for every ISO 160–2599; unknown/low ISO → 92;
+  capped at ×16). m8_savetest: 16 ISOs incl. every threshold edge + a full ISO 1250 shot (736) pass.
+  Stage 4 `55264b11…` — awaiting camera test.
 - Open: per-channel black (green slightly above R/B at base ISO? needs a lens-cap frame); whether
   intermediate ISOs exist (e.g. auto ISO) — the rule rounds to the nearest stop.
 

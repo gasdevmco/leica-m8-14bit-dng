@@ -14,7 +14,8 @@
 @   (same address arithmetic as 0x3C61C-0x3C640, plus last-block bytes - row bytes).
 @   mode 1: dump (stage 3) -- "M8DUMP01", ctx+0x4210..0x4240, hook inputs, job+0..0x280,
 @           settings block (0x200 bytes) into the trailing row.
-@   mode 2: DNG (stage 4) -- copy the IFD template, then fill each per-shot slot from the job.
+@   mode 2: DNG (stage 4) -- copy the IFD template, fill each per-shot slot from the job, then
+@           write BlackLevel = base x 2^(number of ISO thresholds the shot's ISO exceeds).
 @   then clean + invalidate the D-cache lines of the written span, drain the write buffer.
 @ Every store goes through `.Lcopy`, which writes nothing unless the whole destination range lies
 @ inside the trailing row and inside the DMA buffer. Reads: ctx, job, settings block, own data.
@@ -106,13 +107,13 @@ dump:                               @ stage 3: raw material for checking the met
 dng:                                @ stage 4: IFD template + per-shot slots
     ldr     r2, [r8, #4]            @ template length
     ldr     r11, [r8, #8]           @ slot count
-    add     r9, r8, #12             @ slots: u16 template offset, job offset, length, 0
+    add     r9, r8, #28             @ slots: u16 template offset, job offset, length, 0
     add     r1, r9, r11, lsl #3     @ template follows the slots
     mov     r0, r6
     call_copy
 slot:
     subs    r11, r11, #1
-    bmi     flush
+    bmi     black
     ldrh    r0, [r9], #2
     ldrh    r1, [r9], #2
     ldrh    r2, [r9], #4
@@ -120,6 +121,26 @@ slot:
     add     r1, r5, r1
     call_copy
     b       slot
+
+black:                              @ BlackLevel per ISO (FINDINGS "Black level per ISO")
+    ldr     r0, [r8, #12]           @ template offset of the BlackLevel value; 0 = none
+    cmp     r0, #0
+    beq     flush
+    add     r9, r8, #16             @ 4 x u16 ISO thresholds, then u16 base black
+    ldrh    r1, [r5, #0x66]         @ ISO (S+0x62, camera-verified)
+    ldrh    r2, [r9, #8]            @ base black (92)
+    mov     r3, #4
+1:  ldrh    ip, [r9], #2
+    cmp     r1, ip
+    movhi   r2, r2, lsl #1          @ above this threshold: one more doubling
+    subs    r3, r3, #1
+    bne     1b
+    push    {r2}                    @ value on own stack; low halfword = the SHORT
+    add     r0, r6, r0
+    mov     r1, sp
+    mov     r2, #2
+    call_copy
+    add     sp, sp, #4
 
 flush:                              @ written data to memory, no stale lines left behind
     bic     r0, r6, #31
@@ -160,5 +181,7 @@ done:
 magic:
     .ascii  "M8DUMP01"
     .ltorg
-tables:                             @ appended by m8_dngpatch.py: mode, template length,
-                                    @ slot count, slots, template
+tables:                             @ appended by m8_dngpatch.py: +0 mode, +4 template length,
+                                    @ +8 slot count, +12 BlackLevel template offset, +16 ISO
+                                    @ thresholds (4 x u16) + base black (u16) + pad, +28 slots,
+                                    @ then the template

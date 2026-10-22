@@ -16,7 +16,7 @@ stage. Stages are not cumulative: each is a complete build, one flash per stage.
 Pieces (each in one declared region, REGIONS):
   canary  0x3CEA0 mov r0,#7 -> #0xA5: RAW header u16[3] = 0xA5
   tiff    0x3CE48-0x3CEFC header block rewritten (tools/asm/m8_header.s): u16[0..3] = TIFF header
-  ldimg   0x28AB0-0x29104 dng_hook code (tools/asm/m8_dnghook.s) + mode/slot tables + IFD template
+  ldimg   0x28AB0-0x29104 dng_hook code (tools/asm/m8_dnghook.s) + mode/black/slot tables + IFD template
           (m8_wrapdng.build_template), rest filled with undefined instructions; entry = stub
           returning 0. "ldimg (dump)" = same bytes with mode 1 instead of 2.
   hook    0x3C6A8 b 0x3C5EC -> bl 0x28AB8 (RAW producer, last block)
@@ -67,17 +67,19 @@ HEADER_STOCK_SHA = '93399af36122e9a734c63f84f258ba8933d85fd43a607d443c8f2e41f8bb
 
 # tools/asm/m8_dnghook.s at 0x28AB0 (stub, dng_hook, .Lcopy, literal pool; `tables` follows)
 HOOK_CODE = bytes.fromhex(
-    '0000a0e31eff2fe1f04f2de9728f8fe246cc84e234509ce51a12d5e5000051e35100001a42cc84e228109ce52c209ce5'
-    '20a09ce584319fe5030051e180319f05030052014800001a78619fe501001ae374319f1503608610076086e0016046e0'
-    '60319fe5030056e13f00003a5c319fe5030056e13c00008a009098e5020059e31f00000a010059e33700001a0600a0e1'
-    '121e8fe20820a0e30fe0a0e1340000ea080086e2421c84e2101081e23020a0e30fe0a0e12e0000ead0042de9380086e2'
-    '0d10a0e11020a0e30fe0a0e1280000ea10d08de2800086e20510a0e10a2da0e30fe0a0e1220000eae4109fe5001091e5'
-    '030c86e2022ca0e30fe0a0e11c0000ea100000ea042098e508b098e50c9088e28b1189e00600a0e10fe0a0e1140000ea'
-    '01b05be20700004ab200d9e0b210d9e0b420d9e0000086e0011085e00fe0a0e10b0000eaf5ffffea1f00c6e3021b86e2'
-    '3a0f07ee360f07ee200080e2010050e1faffff3a0000a0e39a0f07eef04fbde8c0f04ee2060050e11eff2f3102c080e0'
-    '00005ce11eff2f3130309fe5033086e003005ce11eff2f8138309fe503005ce11eff2f81012052e20130d1540130c054'
-    'fbffff5a1eff2fe14d3844554d503031101f0000570a0000e0446f0280e00300e0bd760230420d00e0c57602')
-HOOK_CODE_SHA = '9c61fa9d67f740ddc19b8ddd71658c8860b2171806cdbf8ccf9ce8b1f8a0442e'
+    '0000a0e31eff2fe1f04f2de9858f8fe246cc84e234509ce51a12d5e5000051e36400001a42cc84e228109ce52c209ce5'
+    '20a09ce5d0319fe5030051e1cc319f05030052015b00001ac4619fe501001ae3c0319f1503608610076086e0016046e0'
+    'ac319fe5030056e15200003aa8319fe5030056e14f00008a009098e5020059e31f00000a010059e34a00001a0600a0e1'
+    '5b1f8fe20820a0e30fe0a0e1470000ea080086e2421c84e2101081e23020a0e30fe0a0e1410000ead0042de9380086e2'
+    '0d10a0e11020a0e30fe0a0e13b0000ea10d08de2800086e20510a0e10a2da0e30fe0a0e1350000ea30119fe5001091e5'
+    '030c86e2022ca0e30fe0a0e12f0000ea230000ea042098e508b098e51c9088e28b1189e00600a0e10fe0a0e1270000ea'
+    '01b05be20700004ab200d9e0b210d9e0b420d9e0000086e0011085e00fe0a0e11e0000eaf5ffffea0c0098e5000050e3'
+    '0f00000a109088e2b616d5e1b820d9e10430a0e3b2c0d9e00c0051e18220a081013053e2faffff1a04202de5000086e0'
+    '0d10a0e10220a0e30fe0a0e10b0000ea04d08de21f00c6e3021b86e23a0f07ee360f07ee200080e2010050e1faffff3a'
+    '0000a0e39a0f07eef04fbde8c0f04ee2060050e11eff2f3102c080e000005ce11eff2f3130309fe5033086e003005ce1'
+    '1eff2f8138309fe503005ce11eff2f81012052e20130d1540130c054fbffff5a1eff2fe14d3844554d503031101f0000'
+    '570a0000e0446f0280e00300e0bd760230420d00e0c57602')
+HOOK_CODE_SHA = 'f59560fd933c6510f5e85b96efd601d0f07742a45de1e03b31ae010f98e3902d'
 HOOK_ENTRY = 0x28AB8                       # dng_hook
 TABLES = 0x28AB0 + len(HOOK_CODE)          # `adr r8, tables` in dng_hook points here
 LDIMG_STOCK_SHA = 'c28db4ffa67195ca427394eb3e21a6c2ff6e9a3a89a37ac0150f3e802019f6f5'
@@ -104,10 +106,20 @@ def slot_table():
     return out
 
 
+def black_table():
+    """(template offset of the BlackLevel value, ISO thresholds, base black) -- same rule as
+    m8_wrapdng.black_for_iso (FINDINGS "Black level per ISO")."""
+    _, slots = template()
+    off, n, typ = slots['BlackLevel']
+    assert (n, typ) == (2, 3) and len(m8_wrapdng.BLACK_ISO_STEPS) == 4
+    return off, m8_wrapdng.BLACK_ISO_STEPS, m8_wrapdng.BLACK
+
+
 def tables(mode):
     t, _ = template()
     slots = slot_table()
-    b = struct.pack('<3I', mode, len(t), len(slots))
+    boff, steps, base = black_table()
+    b = struct.pack('<4I', mode, len(t), len(slots), boff) + struct.pack('<6H', *steps, base, 0)
     b += b''.join(struct.pack('<4H', off, src, n, 0) for _, off, src, n in slots)
     return b + t
 
@@ -155,10 +167,14 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
         'stage 1, m8_savetest 32/0; flashed and camera-tested 2026-10-20',
     '3b451b4d7da62621179995ba11fa5962f347c7aa9d82e99a9e156e7801ee6e25':
         'stage 4, first version (date slot S+0x20, wrong); flashed 2026-10-20, Lightroom opens its files',
-    '98011d7b48243917dee3807eda547719a50204f2576bea289d45c5473609a88b': 'stage 2, m8_savetest 145/0 (2026-10-20); not flashed',
-    'c152d30593e52e41ebdb44f1b9573f5a113e5d52e34066d79fc6b48ead2dd526': 'stage 3, m8_savetest 145/0 (2026-10-20); not flashed',
-    '59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c': 'stage 4, date fixed, m8_savetest 145/0; chosen build 2026-10-20 (Lightroom opens the .RAW)',
-    'd9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66': 'stage 5, date fixed, m8_savetest 145/0; flashed 2026-10-20, rolled back: in-camera review cannot show the JPG',
+    '59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c':
+        'stage 4, BlackLevel 92 at all ISOs; flashed and camera-tested 2026-10-20 (superseded)',
+    'd9a94feb9fba2681f46ba0f1e78ad75ed1e9383c088b0b0e3cba0f3b40333e66':
+        'stage 5, BlackLevel 92; flashed 2026-10-20, rolled back: in-camera review cannot show the JPG',
+    'ff6b3f63a0f2a8c7a6231cc98e53c6b977c63734a2ef16ea4a8e30a56d8d45e9': 'stage 2, m8_savetest 150/0 (2026-10-21); not flashed',
+    '77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca': 'stage 3, m8_savetest 150/0 (2026-10-21); not flashed',
+    '55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c': 'stage 4, BlackLevel per ISO, m8_savetest 150/0 (2026-10-21); not yet flashed',
+    '00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce': 'stage 5, BlackLevel per ISO, m8_savetest 150/0 (2026-10-21); not flashed',
 }
 
 
@@ -262,10 +278,11 @@ def show(base, new):
         print(f'  0x{va:X}: {fmt(old, pa[o:o + 4])}  ->  {fmt(neu, pb[o:o + 4])}')
     if data:
         b = pb[TABLES - PXA_BASE:hi - PXA_BASE]
-        mode, tlen, nslots = struct.unpack_from('<3I', b)
-        used = 12 + 8 * nslots + tlen
+        mode, tlen, nslots, boff = struct.unpack_from('<4I', b)
+        used = 28 + 8 * nslots + tlen
         print(f'  0x{TABLES:X}-0x{hi:X}: data -- mode {mode}, {nslots} slots, template {tlen} bytes '
-              f'(sha {hashlib.sha256(b[12 + 8 * nslots:used]).hexdigest()[:8]}), '
+              f'(sha {hashlib.sha256(b[28 + 8 * nslots:used]).hexdigest()[:8]}), '
+              f'BlackLevel at template+{boff}, ISO steps {struct.unpack_from("<4H", b, 16)}, '
               f'{hi - TABLES - used} bytes padding/undefined fill')
 
 

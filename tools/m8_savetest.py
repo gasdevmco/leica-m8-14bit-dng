@@ -202,7 +202,7 @@ def geometry(e, out, typ, size):
     return out
 
 
-def save(pxa, raw, policy='eager', bia=False):
+def save(pxa, raw, policy='eager', bia=False, iso=None):
     """One simulated RAW (or .BIA) shot through the real save path; returns the emulator."""
     e = SaveEmu(pxa, raw[HDR:], policy)
     # ring buffer, set up by the firmware's own method
@@ -220,7 +220,7 @@ def save(pxa, raw, policy='eager', bia=False):
     e.w32(JOB + 0x154, 1)
     e.uc.mem_write(JOB + 0x21A, bytes([bia]))
     e.w32(JOB + 0x210, 1)                       # header u16[16..18] (sample: 1, 0, 0)
-    fill_shot(e)
+    fill_shot(e, iso)
     # message: +8 job, +0xC writer
     e.w32(MSG + 8, JOB)
     e.w32(MSG + 0xC, W)
@@ -243,10 +243,11 @@ SHOT.update(DateTimeOriginal=SHOT['DateTime'], DateTimeDigitized=SHOT['DateTime'
 SETTINGS_PATTERN = bytes(range(256)) * 2        # stands in for the settings block (dump check)
 
 
-def fill_shot(e):
+def fill_shot(e, iso=None):
+    shot = dict(SHOT, **({} if iso is None else {'ISO': iso}))
     for _, name, typ, _, where in wd.SHOT_FIELDS:
         if where.startswith('S+'):
-            e.uc.mem_write(JOB + 4 + int(where[2:], 16), wd.pack_value(typ, SHOT[name]))
+            e.uc.mem_write(JOB + 4 + int(where[2:], 16), wd.pack_value(typ, shot[name]))
     e.uc.mem_write(e.u32(et.P_SETTINGS), SETTINGS_PATTERN)
 
 
@@ -255,7 +256,7 @@ def trail_dest(idx):
     return DMA_BUF + (idx & 1) * DMA_PARITY + (ROWS - idx * 16) * ROW_BYTES - ROW_BYTES
 
 
-def expected(stage, raw, e):
+def expected(stage, raw, e, iso=None):
     """The file each stage must produce from `raw`, computed without the firmware."""
     pieces = dp.STAGES[stage][1]
     out = bytearray(raw)
@@ -275,11 +276,14 @@ def expected(stage, raw, e):
         t, slots = dp.template()
         shot = {k: v for k, v in SHOT.items() if k in dict(
             (n, 1) for n, *_ in dp.slot_table())}
+        if iso is not None:
+            shot['ISO'] = iso
+        shot['BlackLevel'] = wd.black_for_iso(shot['ISO'])
         out = bytearray(wd.wrap(raw, t, slots, shot))
     return bytes(out)
 
 
-def run_hook(pxa, size, idx, bia=False, row_bytes=ROW_BYTES, rows=ROWS):
+def run_hook(pxa, size, idx, bia=False, row_bytes=ROW_BYTES, rows=ROWS, iso=None):
     """Call dng_hook directly as the producer's `bl` would; returns (emu, regs preserved?)."""
     from unicorn.arm_const import (UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
                                    UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
@@ -290,7 +294,7 @@ def run_hook(pxa, size, idx, bia=False, row_bytes=ROW_BYTES, rows=ROWS):
     e.w32(CTX + 0x4220, idx)
     e.w32(CTX + 0x4228, row_bytes)
     e.w32(CTX + 0x422C, rows)
-    fill_shot(e)
+    fill_shot(e, iso)
     keep = [UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8, UC_ARM_REG_R9,
             UC_ARM_REG_R10, UC_ARM_REG_R11, UC_ARM_REG_SP]
     vals = [CTX, 0x5555, 0x6666, size, 0x8888, 0x9999, 0xAAAA, 0xBBBB, et.STACK + 0xF000]
@@ -444,6 +448,23 @@ def main():
                 dma = [w for w in e.new_writes if not et.STACK <= w[0] < et.STACK + 0x10000]
                 R.check(f'{b} dng_hook {label}: regs kept, writes, outside trailing row',
                         (kept, bool(dma), outside(e.new_writes, dst, dst + ROW_BYTES)), (True, writes, []))
+        # BlackLevel per ISO (mode 2): dng_hook called directly, value read from the trailing row
+        if 'ldimg' in pieces:
+            boff = dp.black_table()[0]
+            bad = []
+            for iso in (0, 100, 160, 226, 227, 320, 452, 453, 640, 905, 906, 1250, 1810, 1811, 2500, 6400):
+                e, kept = run_hook(pxa, 7 * ROW_BYTES, 165, iso=iso)
+                got = e.u16(trail_dest(165) + boff)
+                if not kept or got != wd.black_for_iso(iso):
+                    bad.append((iso, got, wd.black_for_iso(iso)))
+            R.check(f'{b} BlackLevel for 16 ISOs == m8_wrapdng.black_for_iso (iso, got, want)', bad, [])
+        if 'tiff' in pieces:
+            raw = raws[samples[0]]
+            e = save(pxa, raw, 'eager', iso=1250)
+            out, want = bytes(e.writer.out), expected(n, raw, e, iso=1250)
+            R.check(f'{b} ISO 1250 shot == expected (BlackLevel 736)',
+                    (dp.changed_ranges(out, want), e.new_entries, outside(e.new_writes, trail_dest(165),
+                     trail_dest(165) + ROW_BYTES)), ([], 1, []))
         # settings loader and SET menu behave exactly as on the flashed build
         same = all(et.run_loader(pxa, et.make_eeprom(pxa, p, c))['block'] ==
                    et.run_loader(flashed, et.make_eeprom(flashed, p, c))['block']

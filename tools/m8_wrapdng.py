@@ -40,7 +40,21 @@ MAKE, MODEL, UNIQUE, SOFTWARE = 'Leica Camera AG', 'M8 Digital Camera', 'M8 Digi
 CM1 = [10469, -5314, 1280, -4326, 12176, 2419, -886, 2473, 7160]      # /10000, Std A
 CM2 = [7675, -2195, -305, -5860, 14118, 1857, -2425, 4007, 6578]      # /10000, D65
 DAYLIGHT_NEUTRAL = [(16384, 31315), (16384, 16384), (16384, 20850)]   # m8raw2dng2 default
-BLACK = 92                             # sensor black pedestal (m8raw2dng2 base value)
+BLACK = 92                             # sensor black pedestal at ISO 160 (m8raw2dng2 base value)
+# Higher ISOs are the base reading x 2^n digitally, pedestal included (FINDINGS "Black level per
+# ISO"): black = BLACK x gain, gain = 2^round(log2(ISO/160)) as in m8raw2dng / m8raw2dng2. Unknown
+# ISO (0) or anything below the first threshold -> gain 1; capped at gain 16 (ISO 2500, the M8's
+# highest). The firmware hook carries the same thresholds (m8_dngpatch.black_table()).
+BLACK_ISO_STEPS = (226, 452, 905, 1810)   # ISO above each -> one more doubling (exact rounding bounds)
+
+
+def black_for_iso(iso, base=BLACK):
+    gain = 1
+    for t in BLACK_ISO_STEPS:
+        if (iso or 0) > t:
+            gain *= 2
+    return base * gain
+
 
 BYTE, ASCII, SHORT, LONG, RATIONAL, UNDEF, SRATIONAL = 1, 2, 3, 4, 5, 7, 10
 SIZE = {BYTE: 1, ASCII: 1, SHORT: 2, LONG: 4, RATIONAL: 8, UNDEF: 1, SRATIONAL: 8}
@@ -125,6 +139,8 @@ def build_template(black=BLACK):
             if tag in SLOT_TAGS:
                 name, _ = SLOT_TAGS[tag]
                 slots[name] = (where, len(raw), typ)
+            elif tag == 50714:                                  # per-ISO black level (computed)
+                slots['BlackLevel'] = (where, len(raw), typ)
             blob += struct.pack('<HHI', tag, typ, count) + field
         return blob + struct.pack('<I', next_ifd)
 
@@ -218,6 +234,8 @@ def main():
     if 'DateTime' not in shot:   # no JPG: RAW mtime stands in for the camera clock
         when = time.strftime('%Y:%m:%d %H:%M:%S', time.localtime(os.path.getmtime(src)))
         shot.update(DateTime=when, DateTimeOriginal=when, DateTimeDigitized=when)
+    if black:
+        shot['BlackLevel'] = black_for_iso(shot.get('ISO'), black)
     dng = wrap(raw, template, slots, shot)
     n = check(dng, raw)
     open(dst, 'wb').write(dng)
