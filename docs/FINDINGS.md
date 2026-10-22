@@ -449,6 +449,22 @@ L1031919 (ISO 160, different scene). File-level evidence only; the firmware rout
   repair). Definitive test (deferred): same tripod scene in DNG mode and JPG fine+RAW, plus a
   lens-cap pair; apply black → clip → table to the 14-bit file and compare pixel for pixel.
 
+## Black level per ISO (2026-10-21, camera file)
+
+- **Observed:** Option 2 files at high ISO open in Lightroom increasingly lifted / washed out — our
+  template writes BlackLevel 92 at every ISO.
+- **`fromcameraimports/L1031933.RAW` (ISO 1250, ISO slot read from our own DNG tags):** every sample
+  value is a multiple of 8 (exactly 50 % multiples of 16); at ISO 160 values are unquantised
+  (50.05 % even). → ISO 1250 = base reading × 8 **digitally**, pedestal included: **black = 92 × 8 =
+  736**. Darkest 0.1 % per CFA channel 688–784, minimums 528–592: black noise straddles 736.
+- Matches the rule in Arvid Kuehl's m8raw2dng (`-b`) and m8raw2dng2 (`-s -b`): **BlackLevel = 92 ×
+  gain, gain = 2^round(log2(ISO/160))** → 92 / 184 / 368 / 736 / 1472 for ISO 160 / 320 / 640 /
+  1250 / 2500; unknown ISO → 1.
+- Consequence: each ISO step above 160 is ×2 digital gain, i.e. one bit fewer distinct levels (ISO
+  1250 ≈ 11 bits of levels stored in 14).
+- Open: per-channel black (green slightly above R/B at base ISO? needs a lens-cap frame); whether
+  intermediate ISOs exist (e.g. auto ISO) — the rule rounds to the nearest stop.
+
 ## Per-shot white balance (2026-10-21, static + file analysis, in progress)
 
 - **The camera computes a per-shot neutral in JPG fine+RAW mode too.** The JPG's Leica MakerNote tags
