@@ -1,6 +1,6 @@
 # Plan: native 14-bit DNG written by the camera
 
-Status: **working on the camera** (2026-10-20): **stage 4** (`59aff4a3…`) is the chosen build:
+Status: **working on the camera** (2026-10-21): **stage 4** (`55264b11…`, BlackLevel per ISO) is the chosen build:
 JPG fine+RAW writes JPG + 14-bit DNG content named `.RAW`, which Lightroom opens as is, with
 correct exposure, ISO and date; in-camera review shows the JPG. Stage 5 (`.DNG` names) was tried
 and rolled back: in-camera review of a camera-written pair shows the DNG's filename and cannot reach
@@ -273,7 +273,8 @@ scratch-card playback test with our DNG (pair + lone copy) on the current build:
   (a) is black the same in all four CFA channels (green slightly high?) and
   (b) does it scale with ISO (original m8raw2dng writes 92 × gain 1/2/4/8/16; m8raw2dng2 a
   flat 92). Result: a ≤5-entry constant table indexed by ISO, baked into the template.
-  **Built 2026-10-21 (stage 4 `55264b11…`, emulator 150/0), awaiting camera test** — rule from
+  **DONE 2026-10-21 (stage 4 `55264b11…`, emulator 150/0, camera-tested: correct value at ISO 160–2500,
+  Lightroom blacks good)** — rule from
   m8raw2dng confirmed on an ISO 1250 file (FINDINGS "Black level per ISO"); dark frames now only
   needed for the per-channel question. Original note: **Easy.** Firmware side: dng_hook looks up ISO (job+0x66, already camera-verified) in the table
   and writes the BlackLevel value (one more slot, or 4 per-channel values if (a) says so). If the

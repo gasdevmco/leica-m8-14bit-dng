@@ -173,7 +173,7 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
         'stage 5, BlackLevel 92; flashed 2026-10-20, rolled back: in-camera review cannot show the JPG',
     'ff6b3f63a0f2a8c7a6231cc98e53c6b977c63734a2ef16ea4a8e30a56d8d45e9': 'stage 2, m8_savetest 150/0 (2026-10-21); not flashed',
     '77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca': 'stage 3, m8_savetest 150/0 (2026-10-21); not flashed',
-    '55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c': 'stage 4, BlackLevel per ISO, m8_savetest 150/0 (2026-10-21); not yet flashed',
+    '55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c': 'stage 4, BlackLevel per ISO, m8_savetest 150/0; flashed and camera-tested 2026-10-21 (current)',
     '00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce': 'stage 5, BlackLevel per ISO, m8_savetest 150/0 (2026-10-21); not flashed',
 }
 

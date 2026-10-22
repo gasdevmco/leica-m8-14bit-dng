@@ -28,8 +28,8 @@ import m8_dngpatch
 TESTED = {
     ('raw-menu', '2.014'): ('f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396',
                             'tested on a camera (2026-10-19)'),
-    ('dng', '2.014'): ('59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c',
-                       'tested on a camera (2026-10-20)'),
+    ('dng', '2.014'): ('55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c',
+                       'tested on a camera (2026-10-21)'),
 }
 CARD_NAME = {'2.014': 'M8-2_014.UPD'}
 OPTIONS = {'raw-menu': 'Option 1: JPG fine+RAW in the menu, kept after power-off',

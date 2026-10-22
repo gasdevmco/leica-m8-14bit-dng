@@ -4,7 +4,7 @@ Personal reverse-engineering project on the author's own Leica M8 (running patch
 Goal 1: make the service-mode "JPG fine+RAW" (14-bit) setting persist — DONE, patched 2.014 flashed and
 working on the camera (2026-10-19).
 Goal 2: have the camera write 14-bit DNG directly — DONE (2026-10-20). Chosen build: **stage 4**
-(`firmware/patched/m8-2_014-stage4.upd`, `59aff4a3…`): JPG fine+RAW writes JPG + 14-bit DNG content
+(`firmware/patched/m8-2_014-stage4.upd`, `55264b11…`, BlackLevel per ISO): JPG fine+RAW writes JPG + 14-bit DNG content
 named `.RAW`; Lightroom opens the `.RAW` as is. Stage 5 (`.DNG` names) worked in Lightroom but broke
 in-camera review (shows the DNG filename, can't reach the JPG), so it was rolled back.
 Rollback chain: stage 1 / `firmware/patched/m8-2_014.upd` / stock.

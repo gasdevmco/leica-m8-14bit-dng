@@ -76,7 +76,7 @@ With Option 2, each JPG fine+RAW shot produces:
 
 - `L10xxxxx.JPG`: the camera's normal JPG, used by in-camera review.
 - `L10xxxxx.RAW`: 21,049,052 bytes. Its contents are a complete 14-bit DNG (uncompressed CFA, M8
-  colour matrices, white level 16383, black level 92) with exposure time, exposure program, ISO,
+  colour matrices, white level 16383, black level matched to the ISO) with exposure time, exposure program, ISO,
   shutter value, exposure bias, max aperture, focal length and date from the shot. Lightroom opens
   the `.RAW` file as is; for other software, rename the extension to `.DNG`. It still converts with
   m8raw2dng2 too.
@@ -113,7 +113,7 @@ The script:
 | Result | SHA-256 |
 |---|---|
 | Option 1, 2.014 | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
-| Option 2, 2.014 | `59aff4a35f5c8fea4ca1fc8ab962ac3e0ac171131bd82410cf67c9231665273c` |
+| Option 2, 2.014 | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` |
 
 ## Flash it
 
@@ -156,7 +156,9 @@ patched → stock → patched on hardware. Before sending the camera to Leica fo
   in-camera review working normally.
 - **White balance:** Lightroom starts from a fixed daylight balance (Auto and the presets work
   normally); the camera's WB setting isn't carried over yet.
-- **Black level:** a constant 92 at every ISO. A per-ISO table from dark frames is planned.
+- **Black level** follows the ISO (92 at ISO 160, doubling per step to 1472 at ISO 2500, the rule
+  from Arvid Kuehl's m8raw2dng, confirmed on the author's camera). One value for all four colour
+  channels; whether green needs a slightly higher value is still open.
 - **Not included yet:** lens name, body serial, the Leica MakerNote, and an embedded preview.
 - **`.BIA` dark frames** (written for long exposures) also get the TIFF header bytes, but no DNG tags.
   Converters that skip the header, such as m8raw2dng2, aren't affected.

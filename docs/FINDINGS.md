@@ -21,6 +21,10 @@ are marked **[tested]**.
   **Lightroom opened the camera-written file** (copy named L1031916.DNG). Burst test on stage 4 not
   done yet. Corrected builds: stage 4 `59aff4a3…`, stage 5 `d9a94feb…` (differ from the flashed
   stage 4 only in the three date-slot source bytes 0x24 → 0x20 at 0x28C9A/0x28CBA/0x28CC2).
+- **2026-10-21 [tested]** **Stage 4 with BlackLevel per ISO (`55264b11…`) flashed — current build.**
+  ISO series L1031949–53: BlackLevel 92/184/368/736/1472 as intended, all files valid (35 tags);
+  Lightroom: blacks correct at every ISO (previously lifted/washed out at high ISO). White balance
+  still opens at the fixed daylight value (known, parked).
 - **2026-10-20 [tested]** **Stage 5 playback problem → back to stage 4.** In-camera review of a
   camera-written stage-5 pair (JPG + our `.DNG`) shows the DNG's filename in the centre and does not
   navigate to the JPG — unlike the earlier test with Mac-copied files. Our DNG has no embedded
@@ -284,7 +288,7 @@ and compares):
 | 1 | canary (file bytes 6–7 `07 00` → `a5 00`) | `firmware/patched/m8-2_014-stage1.upd` | `3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66` | emulator pass; **flashed, camera-tested 2026-10-20** |
 | 2 | canary, ldimg (hook off: idle test) | `…-stage2.upd` | `ff6b3f63a0f2a8c7a6231cc98e53c6b977c63734a2ef16ea4a8e30a56d8d45e9` | emulator 145/0; not flashed |
 | 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca` | emulator 145/0; not flashed |
-| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **not yet flashed**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
+| 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **flashed, camera-tested 2026-10-21 — current build**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
 | 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce` | emulator 150/0; not flashed (previous `d9a94feb…` flashed 2026-10-20, rolled back: in-camera review) |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
@@ -470,7 +474,8 @@ L1031919 (ISO 160, different scene). File-level evidence only; the firmware rout
   905 / 1810 the shot's ISO exceeds), from S+0x62; table in `tables+12..+27` generated from
   `m8_wrapdng.black_for_iso` (same rule as m8raw2dng2 for every ISO 160–2599; unknown/low ISO → 92;
   capped at ×16). m8_savetest: 16 ISOs incl. every threshold edge + a full ISO 1250 shot (736) pass.
-  Stage 4 `55264b11…` — awaiting camera test.
+  Stage 4 `55264b11…` **camera-tested 2026-10-21**: L1031949–53 (ISO 160/320/640/1250/2500) carry
+  BlackLevel 92/184/368/736/1472, darkest 0.1 % just below each; Lightroom blacks good at every ISO.
 - Open: per-channel black (green slightly above R/B at base ISO? needs a lens-cap frame); whether
   intermediate ISOs exist (e.g. auto ISO) — the rule rounds to the nearest stop.
 
