@@ -16,6 +16,7 @@ stage. Stages are not cumulative: each is a complete build, one flash per stage.
   7      stage 4 + screens, screens key  INFO screens: histogram, stats        camera-tested 2026-10-23:
                                          histogram stayed on the first shot; replaced by stage 8
   8      stage 4 + stats, stats key      INFO shows Camera stats               camera-tested 2026-10-23
+  10     stats, stats key (no DNG)       Option 1 + INFO Camera stats          in progress
 
 Pieces (each in one declared region, REGIONS):
   canary  0x3CEA0 mov r0,#7 -> #0xA5: RAW header u16[3] = 0xA5
@@ -321,6 +322,7 @@ STAGES = {
     7: ('as stage 4, plus INFO screens: Last shot (histogram), Camera stats',
         ['tiff', 'ldimg', 'hook', 'screens', 'screens key']),
     8: ('as stage 4, plus INFO shows Camera stats', ['tiff', 'ldimg', 'hook', 'stats', 'stats key']),
+    10: ('Option 1 (RAW patch only, no DNG) plus INFO shows Camera stats', ['stats', 'stats key']),
 }
 KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66':
@@ -342,6 +344,8 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
         'histogram showed the first shot after later shots (review buffer); replaced by stage 8',
     '32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8':
         'stage 8, INFO -> Camera stats; m8_infotest 38/0, m8_inforender 7/0, m8_savetest 49/0; flashed and camera-tested 2026-10-23',
+    'fa4ae63a22e2df9749e989ccc570808ac24dabe1a3992593c4c37d27ad6c1c43':
+        'stage 10, Option 1 + INFO Camera stats; m8_infotest 50/0, m8_inforender 7/0, m8_savetest 39/0 (2026-10-23); not flashed',
 }
 
 

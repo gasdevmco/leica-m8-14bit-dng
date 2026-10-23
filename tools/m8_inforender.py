@@ -16,7 +16,7 @@ Checks: the frozen stage-7 bytes equal the reassembled source; every store made 
 to the framebuffer or the stack; on_key switches pages, closes through the dialog's own SET path
 with its own method table restored, ignores other keys.
 
-Usage:  work/venv/bin/python tools/m8_inforender.py [image.JPG] [--stage 7|8] [--out DIR] [-v]
+Usage:  work/venv/bin/python tools/m8_inforender.py [image.JPG] [--stage 7|8|10] [--out DIR] [-v]
 Needs:  unicorn, Pillow (work/venv)
 """
 import os, struct, sys
@@ -33,7 +33,8 @@ from m8_rawpatch import PXA_BASE
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 # stage -> (source, region in m8_dngpatch.REGIONS, frozen-bytes attribute in m8_dngpatch)
 STAGES = {7: ('tools/asm/m8_infoscreens.s', 'bfmem', 'SCREENS_CODE'),
-          8: ('tools/asm/m8_infostats.s', 'memtest12', 'STATS_CODE')}
+          8: ('tools/asm/m8_infostats.s', 'memtest12', 'STATS_CODE'),
+          10: ('tools/asm/m8_infostats.s', 'memtest12', 'STATS_CODE')}   # Option 1 + INFO
 STAGE = 8
 SRC = os.path.join(ROOT, STAGES[STAGE][0])
 LO, HI = d.REGIONS[STAGES[STAGE][1]]       # region of the new code

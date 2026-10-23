@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Emulator test of the INFO builds (m8_dngpatch.py --stage 6, 7 and 8) against stage 4.
+Emulator test of the INFO builds (m8_dngpatch.py --stage 6, 7, 8; 10 = Option 1 + INFO) against stage 4.
 
 Runs the camera's real application key handler 0x44E30 (and the service gate 0x403F0) on both
 builds, for every key code in every GUI state below, and records each call out of the handler
@@ -164,14 +164,25 @@ def main():
             open_menu + [('write', 'app+0x70A4', 4, vt_address(7, 'vt_hist'))] + show_dialog),
         8: ('memtest12', ['word 0x2DAC0 = 0x2ABD0', 'word 0x2DACC = 0x2B0E0', 'branch 0x44F68'],
             open_menu + [('write', 'app+0x70A4', 4, vt_address(8, 'vt_stats'))] + show_dialog),
+        # Option 1 + INFO: same pieces as stage 8 on the RAW-patch build (region check vs that build)
+        10: ('memtest12', ['word 0x2DAC0 = 0x2ABD0', 'word 0x2DACC = 0x2B0E0', 'branch 0x44F68'],
+             open_menu + [('write', 'app+0x70A4', 4, vt_address(8, 'vt_stats'))] + show_dialog),
     }
+    _, s8 = d.stage_file(stock, 8)
+    _, s10 = d.stage_file(stock, 10)
+    lo, hi = d.REGIONS['memtest12']
+    res.check('stage 10 INFO bytes == stage 8 INFO bytes (code region + branch)',
+              (d.pxa_of(s10)[lo - PXA_BASE:hi - PXA_BASE] == d.pxa_of(s8)[lo - PXA_BASE:hi - PXA_BASE],
+               d.pxa_of(s10)[0x44F68 - PXA_BASE:0x44F6C - PXA_BASE] == d.pxa_of(s8)[0x44F68 - PXA_BASE:0x44F6C - PXA_BASE]),
+              (True, True))
     unknown = set()
     for n, (region, want_refs, extra) in stages.items():
-        _, sn = d.stage_file(stock, n)
+        base, sn = d.stage_file(stock, n)
         pn = d.pxa_of(sn)
         pos, size = d.find_lump(sn, b'PXA')
-        res.check(f'stage {n} vs stage 4: changes only in {region} + infokey',
-                  d.region_violations(s4, sn, pos, size, {region, 'infokey'}), [])
+        ref, ref_name = (base, 'Option 1 (RAW patch)') if n == 10 else (s4, 'stage 4')
+        res.check(f'stage {n} vs {ref_name}: changes only in {region} + infokey',
+                  d.region_violations(ref, sn, pos, size, {region, 'infokey'}), [])
         res.check(f'stage {n}: references into the new code', refs_into(pn, *d.REGIONS[region]), want_refs)
         # key handler, every key in every state, stage 4 vs stage n
         for state in STATES:
