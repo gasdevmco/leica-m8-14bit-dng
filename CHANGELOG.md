@@ -8,7 +8,8 @@ Hashes are the SHA-256 of the file `m8patch.py` writes; if yours differs, don't 
 - **New add-on, `--info` (experimental), for either option:** in shooting mode the INFO button (which
   does nothing on a stock M8) shows a Camera stats screen: shots taken (the body's shutter counter),
   battery, temperature and lens code, the values of Leica's hidden service page "Body Debug Data".
-  INFO or SET closes it. Service mode is unchanged.
+  INFO or SET closes it. Service mode is unchanged. Picture in the README
+  (`docs/assets/info-camera-stats.png`).
 - Options 1 and 2 without `--info` are unchanged (same hashes as v0.3.0).
 - Developers: emulator tests for the INFO builds (`m8_infotest.py`, every key in every GUI state;
   `m8_inforender.py`, renders the screen with the camera's own drawing code); README lists how long

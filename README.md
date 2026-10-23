@@ -80,6 +80,12 @@ Lightroom straight from the card.
 Either option can include a Camera stats screen. On a stock M8 the INFO button does nothing in
 shooting mode; with `--info` it shows:
 
+<p align="center"><img src="docs/assets/info-camera-stats.png" width="480"
+alt="Camera stats screen: Shots taken, Battery, Temperature, Lens code, Firmware"></p>
+<p align="center"><sub>The screen as drawn by the patch code, rendered in the emulator with the
+camera's own drawing routines and fonts (<code>tools/m8_inforender.py</code>). Values are example
+values, shown 2× size.</sub></p>
+
 | Shots taken | Battery | Temperature | Lens code | Firmware |
 |---|---|---|---|---|
 | the body's shutter counter | Empty … Full | the body's reading, shown as °C | the code the body reads from the lens mount | 2.014 + INFO |
