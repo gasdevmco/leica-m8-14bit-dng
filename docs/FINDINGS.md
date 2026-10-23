@@ -291,6 +291,8 @@ and compares):
 | 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca` | emulator 145/0; not flashed |
 | 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **flashed, camera-tested 2026-10-21 — current build**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
 | 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce` | emulator 150/0; not flashed (previous `d9a94feb…` flashed 2026-10-20, rolled back: in-camera review) |
+| 8 | stage 4 + stats, stats key (INFO → Camera stats) | `…-stage8.upd` | `32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8` | m8_infotest 38/0, m8_inforender 7/0, m8_savetest 49/0 (2026-10-23); not flashed. See "GUI" |
+| 7 | stage 4 + screens, screens key (INFO → Last shot → Camera stats) | `…-stage7.upd` | `c88e77c0fc57d98f022c81fdad8e73d23430b591d344c223b84ac6364d61dae4` | m8_infotest 26/0, m8_inforender 13/0, m8_savetest 49/0; **flashed 2026-10-23**: screens work, but the histogram kept showing the first shot after later shots → replaced by stage 8. See "GUI" |
 | 6 | stage 4 + info, info key (INFO → Body Debug Data) | `…-stage6.upd` | `f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c` | m8_infotest 14/0, m8_savetest 49/0; **flashed, camera-tested 2026-10-23**: INFO opens Body Debug Data, SET closes it, INFO again does not (as in service mode). See "GUI" |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
@@ -581,8 +583,59 @@ shooting mode on the camera; the top LCD shows battery and shots left).
   request 0x33) -- that is the camera's own code path, reached today via service mode.
   **Camera test 2026-10-23 [tested]:** INFO in shooting mode shows Body Debug Data; SET closes it
   back to shooting; INFO while it is open does nothing (dialog ignores `i`, same as via service mode).
-- Still open: the pixel/rectangle/glyph drawing primitives, how a page is allocated/shown/closed
-  outside startup, and an emulated render of a window into an image.
+- **Drawing API** (all camera code; colours RGB565, framebuffer 320x240x3 bytes R,G,B, pixel offset
+  0x952E4 = y*960 + x*3): fill 0x98A40(x, y, w, h, [sp] colour) (bounds vs `[0x17F984]` width,
+  `[0x17F980]` height); outline 0x98F24(x, y, w, h, thickness, colour); vertical line
+  0x98C34(x, y, len, colour, [sp] 0); text 0x996EC(x, y, w, h, [sp] str, colour, font) (string lookup
+  0x88990, then the wrapping renderer 0x99494; UTF-8); width 0x99C0C(str, font); line height
+  0x99D44(·, font). Display object `[0x17F988]`: +0x10 bytes/pixel, vtable +0x14 = framebuffer.
+  Fonts: counter `[0xF0634]` starts at 3 (0-2 built in), so FONT1 = font 3 (17 px), FONT2 = font 4.
+  Window getters (0xCD34C…): x +0x18, y +0x1C, w +0x14, h +0x10. Dialog base paint 0x605AC: clears
+  the window black, then vtable +0x48 (title, 0x606B4) and +0x4C (content). BodyDebugDataDialog is
+  0,0,320,240 (0x6046C).
+- **Histograms:** InformationPage (playback info) owns a histogram object (+0x118; 0x7F9D0: 16-byte
+  header, 4 x 256 u32 bins at +0x10/+0x410/+0x810/+0xC10) and a widget (+0x1128, paint 0x54964 /
+  0x54B9C: one 0x98C34 line per bin, scaled with 0xCAB28). 0x550EC picks RGB (0x7FD84) or luma
+  (0x7FC58) by the profile's histogram setting (+0x10) and is fed by 0x55260 with
+  **`[app+0x251A8]` + 0x30C0, 320 x 214, stride 960** = the 3:2 photo inside the 320x240 RGB copy of
+  the **last displayed image**, set by auto-review (0x4ABB0), playback (0x48124) and the gallery
+  (0x4998C). Null until something has been displayed since power-on.
+- **Body Debug Data fields** (dialog + offset, filled by 0x3E238): +0xB0/+0xB4 BV intern raw/normal,
+  +0xC0/+0xC4 temperature raw/"normal", +0xC8 battery state (0 Empty … 4 Full), +0xD4 body exposure
+  time, +0xDD lens code, **+0xE4 NumExposures**.
+- **Stage 7: INFO screens** (`tools/asm/m8_infoscreens.s`, region **bfmem 0x2ABD0-0x2B6E8**: bf_memtest1,
+  helpers 0x2AF90 / 0x2B05C (called only by bf_memtest2), bf_memtest2, bf_memtest3, bf_checktrans;
+  the four command entries stay stubs returning 0, pinned by `.org`; their registrations
+  0x2DAB0/0x2DAC0/0x2DACC/0x2DAD8 are the only outside references). INFO opens the dialog as in
+  stage 6, after pointing it (dialog+0) at our copy of its method table with our title (+0x48),
+  content (+0x4C) and keys (+0x2C). Two tables = two pages: **Last shot** (half-size thumbnail of
+  the last displayed image + luma/R/G/B histogram, 128 bins from every 2nd pixel and row, drawn
+  with 0x98C34; "No image yet" if `[app+0x251A8]` is 0) → INFO → **Camera stats** (one body request
+  0x33 per paint, as the dialog's own paint; Shots taken, battery, temperature, lens code;
+  "Body data unavailable" on failure) → INFO or SET → close: dialog+0 = 0xED1B8 again, then the
+  dialog's own SET path 0x61868. Other keys ignored.
+  `tools/m8_inforender.py` runs the dialog base paint and our methods with the real GUI drawing code
+  and fonts into an emulated framebuffer (PNGs): our stores go only to the framebuffer and stack;
+  keys switch/close/ignore as intended. Peak stack per paint 1.2 KB (stats page as much as the
+  histogram page: sprintf + text engine); the GUI application task sets 0x4000 in task field +0xB0
+  (0x9A410), most likely its stack size (not proven). If the screen is ever closed other than by
+  INFO/SET (power-off etc.), the dialog keeps our table until restart, so service-mode Body Debug
+  Data would show our screen until then.
+- **Stage 7 camera test (2026-10-23) [tested]:** INFO opened "Last shot" and the screens worked, but
+  after later shots the histogram/thumbnail still showed the **first** shot: `app+0x251A8` is not a
+  reliable "last shot". Per-shot path: GUI event 0x2719 → **0x43100** copies the new 320x240x3 image
+  (from 0x3B430) into `[app+0x1AAF8]` and sets app+0x251A8 to it, but only if the active profile's
+  byte +0x34 is set or the event carries a flag, and `app+0x25608` > 1 (else 0x43320 / 0x43328,
+  no copy). Other setters: 0x48344 (playback) and 0x4B2BC (AutoReviewHist onKey: copies review slot
+  `[rv + [rv+0xA8]*0x1C + 0x54]` (rv = app+0x17D30) into `[app+0x1AAF4]`), 0x49A64 (gallery).
+  `[app+0x1AAF4]` / `[app+0x1AAF8]` are fixed buffers set in the application constructor; the review
+  paint 0x4B688 shows `[app+0x1AAF4]`. Owner's decision: drop the histogram (PLAY has one).
+- **Stage 8: INFO → Camera stats only** (`tools/asm/m8_infostats.s`, region **memtest12
+  0x2ABD0-0x2B338**: bf_memtest1, the two helpers only bf_memtest2 calls, bf_memtest2; stubs at both
+  entries, the rest of bf_memtest2 undefined fill, so no dangling calls; registrations 0x2DAC0 /
+  0x2DACC are the only outside references). Same opening as stage 7 with one method table
+  (vt_stats); INFO or SET closes (dialog+0 = 0xED1B8, then 0x61868); other keys ignored.
+- Still open: per-camera check that the temperature "normal" value is °C.
 
 ## Known 2.024 issue
 

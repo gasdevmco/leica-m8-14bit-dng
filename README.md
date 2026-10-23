@@ -199,6 +199,9 @@ Every address, offset and decision, with the evidence for it, is in
   kept for diagnosis: 1 = header canary, 2 = new code present but not hooked in, 3 = metadata dump,
   5 = `.DNG` names. It prints every changed instruction and checks that nothing outside the
   declared regions changed.
+- Stages 6–8 are **experimental**, are tested only on the author's camera, and aren't offered by
+  `m8patch.py`. Each is stage 4 plus an INFO-button screen in shooting mode. Stage 8 shows camera
+  stats (shot count, battery, temperature, lens code). See `docs/FINDINGS.md`, "GUI".
 
 ```sh
 python3 -m venv work/venv && work/venv/bin/pip install -r requirements.txt   # Capstone, Unicorn, …
@@ -207,12 +210,25 @@ work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/p
 
 ## Testing without a camera
 
-Two Unicorn-based emulator suites run the real firmware code from the stock file:
+Unicorn-based emulator suites run the real firmware code from the stock file:
 
 ```sh
-work/venv/bin/python tools/m8_emutest.py     # settings loader + SET menu, stock vs RAW patch
-work/venv/bin/python tools/m8_savetest.py    # a simulated shot through the real save path (~6 min)
+work/venv/bin/python tools/m8_emutest.py              # settings loader + SET menu, stock vs RAW patch
+work/venv/bin/python tools/m8_savetest.py --stage 4   # a simulated shot through the real save path, Option 2
+work/venv/bin/python tools/m8_savetest.py             # the same for every stage
 ```
+
+How long they take (Apple M4 Max; expect longer on slower machines). Each prints `N passed, 0 failed`
+at the end and prints little before that, so a long silence is normal.
+
+| Command | What it covers | Time |
+|---|---|---|
+| `m8_emutest.py` | Option 1: settings loader and SET menu | ~1 s |
+| `m8_savetest.py --stage 4` | Option 2: one build through the save path | ~2.5 min |
+| `m8_savetest.py --quick` | every stage, fewer variants per sample | ~3.5 min |
+| `m8_savetest.py` | every stage, all variants | ~9 min |
+| `m8_infotest.py` | experimental INFO builds (stages 6–8): key handling | ~10 s |
+| `m8_inforender.py` | experimental INFO screen: renders it with the camera's drawing code | ~2 s |
 
 `m8_savetest.py` runs the real store routine, DMA handler, ring buffer and RAW writer. It models the
 DMA controller and the card-writer task. For each build it compares the file that reaches the "card"
@@ -230,11 +246,12 @@ names. `m8_emutest.py` needs the RAW-patch build at `firmware/patched/m8-2_014.u
 | `m8patch.py` | Build Option 1 or Option 2 from your stock file (start here) |
 | `CHANGELOG.md` | Versions of this project, with the build hash of each option |
 | `tools/m8_rawpatch.py` | Persistent-RAW patch (2.014) |
-| `tools/m8_dngpatch.py` | In-camera DNG builds (`--stage 1…5`), with region and hash checks |
-| `tools/asm/` | Assembly source of the new code (`m8_header.s`, `m8_dnghook.s`) |
+| `tools/m8_dngpatch.py` | In-camera DNG builds (`--stage 1…8`; 6–8 experimental), with region and hash checks |
+| `tools/asm/` | Assembly source of the new code (DNG: `m8_header.s`, `m8_dnghook.s`; INFO: `m8_info*.s`) |
 | `tools/m8_asm.py` | Assembles one source with clang and checks it against the frozen bytes |
 | `tools/m8_wrapdng.py` | Desktop RAW → DNG wrapper; the reference for the in-camera file and its tag template |
-| `tools/m8_emutest.py`, `tools/m8_savetest.py` | Emulator tests |
+| `tools/m8_emutest.py`, `tools/m8_savetest.py`, `tools/m8_infotest.py`, `tools/m8_inforender.py` | Emulator tests (durations under [Testing](#testing-without-a-camera)) |
+| `tools/m8_font.py` | Decodes and renders the camera's GUI fonts |
 | `tools/m8_reclaim.py` | Ranks unused debug commands as space for new code |
 | `tools/armtools.py`, `tools/split_upd.py`, `tools/ghidra/` | Analysis helpers |
 | `docs/FINDINGS.md` | Reverse-engineering notes: addresses, formats, hardware test log |

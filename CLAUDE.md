@@ -8,9 +8,10 @@ Goal 2: have the camera write 14-bit DNG directly — DONE (2026-10-20). Chosen 
 named `.RAW`; Lightroom opens the `.RAW` as is. Stage 5 (`.DNG` names) worked in Lightroom but broke
 in-camera review (shows the DNG filename, can't reach the JPG), so it was rolled back.
 Rollback chain: stage 1 / `firmware/patched/m8-2_014.upd` / stock.
-On the author's camera since 2026-10-23: **stage 6** (`f8e8138d…` = stage 4 + INFO in shooting mode
-opens Body Debug Data; FINDINGS "GUI"); roll back to stage 4. Public Option 2 (`m8patch.py dng`) stays stage 4.
-Next (owner's plan): INFO cycles last-shot histogram → camera stats → off.
+On the author's camera since 2026-10-23: **stage 7** (`c88e77c0…`, INFO screens; its histogram kept
+showing the first shot) — next to flash: **stage 8** (`32e6854e…` = stage 4 + INFO shows Camera stats;
+FINDINGS "GUI"). Roll back to stage 6 or 4. Public Option 2 (`m8patch.py dng`) stays stage 4.
+Owner's decision 2026-10-23: no histogram on INFO (PLAY has one); INFO = Camera stats only.
 
 Read `docs/FINDINGS.md` first — it holds every address, offset, hash and conclusion so far.
 For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constraints, firmware leads and step-by-step work plan.
@@ -23,13 +24,16 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
 - `tools/split_upd.py` — `python3 tools/split_upd.py firmware/stock/m8-2_014.upd work/split-2.014`
 - `tools/armtools.py` — Capstone helpers (dis, xrefs, callers); defaults to `work/split-2.014/PXA.bin`
 - `tools/m8_rawpatch.py` — `python3 tools/m8_rawpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014.upd`
-- `tools/m8_emutest.py` — Unicorn test of the RAW patch: `work/venv/bin/python tools/m8_emutest.py [-v]`
+- `tools/m8_emutest.py` — Unicorn test of the RAW patch (~1 s): `work/venv/bin/python tools/m8_emutest.py [-v]`
 - `tools/m8_dngpatch.py` — staged DNG builds: `work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014-stageN.upd --stage N`
-- `tools/m8_infotest.py` — INFO build (stage 6) vs stage 4: real key handler, all keys and GUI states (~5 s):
+- `tools/m8_infotest.py` — INFO builds (stages 6-8) vs stage 4: real key handler, all keys and GUI states (~10 s):
   `work/venv/bin/python tools/m8_infotest.py [-v]`
-- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`, `m8_info.s`); `tools/m8_asm.py X.s`
+- `tools/m8_inforender.py` — INFO screens (stage 8, or `--stage 7`): runs the real GUI paint code, writes PNGs + checks (~2 s):
+  `work/venv/bin/python tools/m8_inforender.py [image.JPG] [--stage 7|8] [--out DIR] [-v]`
+- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`, `m8_info.s`, `m8_infoscreens.s`, `m8_infostats.s`); `tools/m8_asm.py X.s`
   assembles one and prints bytes + SHA-256 (the patch script carries the frozen bytes).
-- `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples (~2 min):
+- `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples
+  (M4 Max: ~9 min all stages, ~3.5 min `--quick`, ~2.5 min `--stage N`):
   `work/venv/bin/python tools/m8_savetest.py [--stage N] [--quick] [-v]`
 - `tools/m8_reclaim.py` — ranks debug-command handlers as reclaimable space: `work/venv/bin/python tools/m8_reclaim.py`
 - `tools/m8_font.py` — decodes the GUI fonts, renders text or a glyph sheet (read-only):
@@ -67,9 +71,11 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
   - Hook only the application key handler's INFO case outside service mode (0x44F68); service mode
     and the `lensinfo` case stay stock. New code runs only when INFO is pressed, never at startup.
   - New code may call only existing GUI routines with the arguments the firmware itself uses for the
-    same page, and may write only the GUI flag bytes the firmware's own path writes (app+0x2548F,
-    camInfoMenu+0x99) and its stack. Body link: only command 0x33 (debug data, a read), and only
-    through the existing dialog. `tools/m8_infotest.py` fails on any other call or write.
+    same page (drawing: fill / line / text routines, FINDINGS "GUI"), and may write only: the GUI flag
+    bytes the firmware's own path writes (app+0x2548F, camInfoMenu+0x99), the borrowed dialog's
+    method-table pointer (restored on close), the framebuffer, and its stack. Body link: only
+    command 0x33 (debug data, a read) via 0x3E238. `tools/m8_infotest.py` (key path) and
+    `tools/m8_inforender.py` (paint) fail on any other call or write.
   - Never open other service pages (Production Test, EEPROM Check, Hardware ID's, …) from new code.
 - Firmware is Leica's copyright: keep private; never publish .upd files or push them to a public remote.
 - Python deps: `python3 -m venv work/venv && work/venv/bin/pip install -r requirements.txt`.

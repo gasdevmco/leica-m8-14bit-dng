@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-Emulator test of the INFO build (m8_dngpatch.py --stage 6) against stage 4 (the flashed build).
+Emulator test of the INFO builds (m8_dngpatch.py --stage 6, 7 and 8) against stage 4.
 
 Runs the camera's real application key handler 0x44E30 (and the service gate 0x403F0) on both
 builds, for every key code in every GUI state below, and records each call out of the handler
 (with its arguments) and each memory write outside the stack. Every other firmware address is
 a test failure (m8_emutest.Emu), so every dependency is accounted for.
 
-Expected (FINDINGS "GUI"): the two builds behave identically, except for INFO ('i') in the normal
-state, where stage 6 additionally shows camInfoMenu (0x58FE8(app+0x6F6C, 1)), writes
-app+0x2548F = 1 and menu+0x99 = 0, and shows BodyDebugDataDialog (0x40360(app+0x70A4, 1)) --
-the same calls and values as the camera's own service-mode path -- and nothing else.
+Expected (FINDINGS "GUI"): each build behaves like stage 4, except for INFO ('i') in the normal
+state, where it additionally shows camInfoMenu (0x58FE8(app+0x6F6C, 1)), writes app+0x2548F = 1
+and menu+0x99 = 0, and shows BodyDebugDataDialog (0x40360(app+0x70A4, 1)) -- the same calls and
+values as the camera's own service-mode path -- and nothing else; stage 7 also points the dialog
+at its own method table (one word, dialog+0 = vt_hist) before showing it.
 
-Also checked: m8_info.s reassembles to the frozen bytes; stage 6 differs from stage 4 only in
-the memtest and infokey regions; the only references into the new code are the INFO branch and
-the debug-shell registration's pointer to the (stub) handler entry.
+Also checked: the sources reassemble to the frozen bytes; each build differs from stage 4 only in
+its code region and infokey; the only references into the new code are the INFO branch and the
+debug-shell registrations' pointers to the (stub) command entries.
 
 Usage:  work/venv/bin/python tools/m8_infotest.py [-v]
 Needs:  unicorn, capstone (work/venv); clang for the reassembly check
@@ -39,7 +40,7 @@ DIALOG = MENU + 0x138               # BodyDebugDataDialog
 
 REAL = [(KEY_HANDLER, 0x450AC),     # application key handler incl. its literal pool
         (0x403F0, 0x40410),         # service-mode gate
-        (0x2ABD0, 0x2AF90)]         # new code (stage 6)
+        (0x2ABD0, 0x2B6E8)]         # new code (stage 6: up to 0x2AF90; stage 8: 0x2B0E8; stage 7)
 # Calls out of the handler. Each records (name, r0, r1); none has side effects here.
 STUB_ADDRS = {
     0x41F64: 'key_when_254a8',      # tail call when app+0x254A8 bit 0 is set
@@ -109,27 +110,10 @@ def run(pxa, state, key, unknown):
     return trace, ret
 
 
-def main():
-    verbose = '-v' in sys.argv
-    res = Results(verbose)
-    stock = open(os.path.join(ROOT, 'firmware/stock/m8-2_014.upd'), 'rb').read()
-    _, s4 = d.stage_file(stock, 4)
-    _, s6 = d.stage_file(stock, 6)
-    p4, p6 = d.pxa_of(s4), d.pxa_of(s6)
-
-    # 1. frozen bytes, regions, references
-    res.check('m8_info.s reassembles to INFO_CODE',
-              m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_info.s')) == d.INFO_CODE, True)
-    import hashlib
-    res.check('stage 4 is the flashed build 55264b11',
-              hashlib.sha256(s4).hexdigest()[:8], '55264b11')
-    pos, size = d.find_lump(s6, b'PXA')
-    res.check('stage 6 vs stage 4: changes only in memtest + infokey',
-              d.region_violations(s4, s6, pos, size, {'memtest', 'infokey'}), [])
-    lo, hi = d.REGIONS['memtest']
+def refs_into(pxa, lo, hi):
     refs = []
-    for o in range(0, len(p6) - 3, 4):
-        w, = struct.unpack_from('<I', p6, o)
+    for o in range(0, len(pxa) - 3, 4):
+        w, = struct.unpack_from('<I', pxa, o)
         va = PXA_BASE + o
         if lo <= va < hi:
             continue
@@ -140,40 +124,74 @@ def main():
                 refs.append(f'branch 0x{va:X}')
         if lo <= w < hi:
             refs.append(f'word 0x{va:X} = 0x{w:X}')
-    # 0x2DAC0: literal of the debug-command initializer 0x2C9F4 (loaded at 0x2CD10) = registration
-    res.check('references into the new code', refs, ['word 0x2DAC0 = 0x2ABD0', 'branch 0x44F68'])
+    return refs
 
-    # 2. key handler, every key in every state, stage 4 vs stage 6
-    unknown = set()
+
+def vt_address(stage, label):
+    """Address of a method table in a stage's code (from the assembled source's symbols)."""
+    import m8_inforender
+    m8_inforender.configure(stage)
+    return m8_inforender.LO + m8_inforender.symbols()[label]
+
+
+def main():
+    verbose = '-v' in sys.argv
+    res = Results(verbose)
+    stock = open(os.path.join(ROOT, 'firmware/stock/m8-2_014.upd'), 'rb').read()
+    _, s4 = d.stage_file(stock, 4)
+    p4 = d.pxa_of(s4)
+    import hashlib
+    res.check('stage 4 is the flashed build 55264b11', hashlib.sha256(s4).hexdigest()[:8], '55264b11')
+    res.check('m8_info.s reassembles to INFO_CODE',
+              m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_info.s')) == d.INFO_CODE, True)
+    res.check('m8_infoscreens.s reassembles to SCREENS_CODE',
+              m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_infoscreens.s')) == d.SCREENS_CODE, True)
+    res.check('m8_infostats.s reassembles to STATS_CODE',
+              m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_infostats.s')) == d.STATS_CODE, True)
+
     common = [('call', 'dance_tracker', 'app+0x0', '0x69'),     # every key, before the switch
               ('call', 'f_41788', 'app+0x0', '0x0'),
               ('call', 'timer_stop', 'app+0x2534C', '0x0')]
-    expect_extra = [('call', 'show_page', 'app+0x6F6C', '0x1'),
-                    ('write', 'app+0x2548F', 1, 1),
-                    ('write', 'app+0x7005', 1, 0),
-                    ('call', 'show', 'app+0x70A4', '0x1')]
-    for state in STATES:
-        diffs = []
-        for key in range(256):
-            t4, r4 = run(p4, state, key, unknown)
-            t6, r6 = run(p6, state, key, unknown)
-            if (t4, r4) != (t6, r6):
-                diffs.append((key, t4, t6))
-        if state == 'normal':
-            res.check('normal state: only INFO differs', [chr(k) for k, _, _ in diffs], ['i'])
-            if diffs:
-                _, t4, t6 = diffs[0]
-                res.check('INFO, stage 4: ignored (only the calls every key makes)', t4, common)
-                res.check('INFO, stage 6: those + service-menu path to Body Debug Data', t6, common + expect_extra)
-        else:
-            res.check(f'{state}: stage 6 identical to stage 4 for all 256 keys', [k for k, _, _ in diffs], [])
-        if verbose and state != 'normal':
-            t, _ = run(p6, state, ord('i'), unknown)
-            print(f'    INFO in {state}: {t}')
+    open_menu = [('call', 'show_page', 'app+0x6F6C', '0x1'),
+                 ('write', 'app+0x2548F', 1, 1),
+                 ('write', 'app+0x7005', 1, 0)]
+    show_dialog = [('call', 'show', 'app+0x70A4', '0x1')]
+    # registration literals of the debug-command initializer 0x2C9F4 (FINDINGS "Reclaimable space")
+    stages = {
+        6: ('memtest', ['word 0x2DAC0 = 0x2ABD0', 'branch 0x44F68'], open_menu + show_dialog),
+        7: ('bfmem', ['word 0x2DAB0 = 0x2B4B0', 'word 0x2DAC0 = 0x2ABD0', 'word 0x2DACC = 0x2B0E0',
+                      'word 0x2DAD8 = 0x2B338', 'branch 0x44F68'],
+            open_menu + [('write', 'app+0x70A4', 4, vt_address(7, 'vt_hist'))] + show_dialog),
+        8: ('memtest12', ['word 0x2DAC0 = 0x2ABD0', 'word 0x2DACC = 0x2B0E0', 'branch 0x44F68'],
+            open_menu + [('write', 'app+0x70A4', 4, vt_address(8, 'vt_stats'))] + show_dialog),
+    }
+    unknown = set()
+    for n, (region, want_refs, extra) in stages.items():
+        _, sn = d.stage_file(stock, n)
+        pn = d.pxa_of(sn)
+        pos, size = d.find_lump(sn, b'PXA')
+        res.check(f'stage {n} vs stage 4: changes only in {region} + infokey',
+                  d.region_violations(s4, sn, pos, size, {region, 'infokey'}), [])
+        res.check(f'stage {n}: references into the new code', refs_into(pn, *d.REGIONS[region]), want_refs)
+        # key handler, every key in every state, stage 4 vs stage n
+        for state in STATES:
+            diffs = []
+            for key in range(256):
+                t4, r4 = run(p4, state, key, unknown)
+                tn, rn = run(pn, state, key, unknown)
+                if (t4, r4) != (tn, rn):
+                    diffs.append((key, t4, tn))
+            if state == 'normal':
+                res.check(f'stage {n}, normal state: only INFO differs', [chr(k) for k, _, _ in diffs], ['i'])
+                if diffs:
+                    _, t4, tn = diffs[0]
+                    res.check(f'stage {n}, INFO: stage 4 ignores it (only the calls every key makes)', t4, common)
+                    res.check(f'stage {n}, INFO: + service-menu path to the dialog', tn, common + extra)
+            else:
+                res.check(f'stage {n}, {state}: identical to stage 4 for all 256 keys', [k for k, _, _ in diffs], [])
     res.check('no escapes to unlisted firmware code', sorted(unknown), [])
     print(f'{res.ok} passed, {res.bad} failed')
     sys.exit(1 if res.bad else 0)
-
 
 if __name__ == '__main__':
     main()
