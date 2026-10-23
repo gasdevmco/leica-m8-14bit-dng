@@ -228,6 +228,7 @@ names. `m8_emutest.py` needs the RAW-patch build at `firmware/patched/m8-2_014.u
 | Path | Contents |
 |---|---|
 | `m8patch.py` | Build Option 1 or Option 2 from your stock file (start here) |
+| `CHANGELOG.md` | Versions of this project, with the build hash of each option |
 | `tools/m8_rawpatch.py` | Persistent-RAW patch (2.014) |
 | `tools/m8_dngpatch.py` | In-camera DNG builds (`--stage 1…5`), with region and hash checks |
 | `tools/asm/` | Assembly source of the new code (`m8_header.s`, `m8_dnghook.s`) |

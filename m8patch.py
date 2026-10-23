@@ -19,6 +19,7 @@ Needs only Python 3 (standard library).
 """
 import hashlib, os, sys
 
+VERSION = '0.3.0'                   # project version (CHANGELOG.md), not a Leica firmware version
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, 'tools'))
 from m8_rawpatch import KNOWN_INPUTS, PATCHES as RAW_PATCHES, find_lump
@@ -65,8 +66,10 @@ def main():
         i = args.index('--out-dir')
         out_dir = args[i + 1]
         del args[i:i + 2]
+    if args in (['--version'], ['-V']):
+        raise SystemExit(f'm8patch v{VERSION}')
     if len(args) != 2 or args[0] not in OPTIONS:
-        raise SystemExit(__doc__)
+        raise SystemExit(f'm8patch v{VERSION}\n' + __doc__)
     option, src = args
     if not os.path.isfile(src):
         fail(f'{src}: no such file')
@@ -80,7 +83,7 @@ def main():
         f.write(out)
     sha = hashlib.sha256(out).hexdigest()
     card = CARD_NAME[version]
-    print(f"""{OPTIONS[option]}
+    print(f"""m8patch v{VERSION} -- {OPTIONS[option]}
   input:   {src}  (stock {version}, unchanged)
   output:  {dst}
   SHA-256: {sha}
