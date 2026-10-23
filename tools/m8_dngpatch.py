@@ -15,7 +15,7 @@ stage. Stages are not cumulative: each is a complete build, one flash per stage.
   6      stage 4 + info, info key        INFO opens Body Debug Data            camera-tested 2026-10-23
   7      stage 4 + screens, screens key  INFO screens: histogram, stats        camera-tested 2026-10-23:
                                          histogram stayed on the first shot; replaced by stage 8
-  8      stage 4 + stats, stats key      INFO shows Camera stats               in progress
+  8      stage 4 + stats, stats key      INFO shows Camera stats               camera-tested 2026-10-23
 
 Pieces (each in one declared region, REGIONS):
   canary  0x3CEA0 mov r0,#7 -> #0xA5: RAW header u16[3] = 0xA5
@@ -341,7 +341,7 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
         'stage 7, INFO screens; m8_infotest 26/0, m8_inforender 13/0, m8_savetest 49/0; flashed 2026-10-23: '
         'histogram showed the first shot after later shots (review buffer); replaced by stage 8',
     '32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8':
-        'stage 8, INFO -> Camera stats; m8_infotest 38/0, m8_inforender 7/0, m8_savetest 49/0 (2026-10-23); not flashed',
+        'stage 8, INFO -> Camera stats; m8_infotest 38/0, m8_inforender 7/0, m8_savetest 49/0; flashed and camera-tested 2026-10-23',
 }
 
 
