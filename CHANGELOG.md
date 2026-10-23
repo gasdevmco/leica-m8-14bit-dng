@@ -3,6 +3,24 @@
 Versions of this project (not Leica firmware versions). Every build is for Leica M8 firmware **2.014**.
 Hashes are the SHA-256 of the file `m8patch.py` writes; if yours differs, don't flash it.
 
+## v0.4.0 — 2026-10-23
+
+- **New add-on, `--info` (experimental), for either option:** in shooting mode the INFO button (which
+  does nothing on a stock M8) shows a Camera stats screen: shots taken (the body's shutter counter),
+  battery, temperature and lens code, the values of Leica's hidden service page "Body Debug Data".
+  INFO or SET closes it. Service mode is unchanged.
+- Options 1 and 2 without `--info` are unchanged (same hashes as v0.3.0).
+- Developers: emulator tests for the INFO builds (`m8_infotest.py`, every key in every GUI state;
+  `m8_inforender.py`, renders the screen with the camera's own drawing code); README lists how long
+  each test takes.
+
+| Build | SHA-256 | Tested on a camera |
+|---|---|---|
+| 1 `raw-menu` | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` | yes (2026-10-19) |
+| 2 `dng` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | yes (2026-10-21) |
+| 1 `raw-menu --info` | `fa4ae63a22e2df9749e989ccc570808ac24dabe1a3992593c4c37d27ad6c1c43` | yes (2026-10-23) |
+| 2 `dng --info` | `32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8` | yes (2026-10-23) |
+
 ## v0.3.0 — 2026-10-23
 
 - **One command for users:** `m8patch.py` builds either option from Leica's stock 2.014 file:

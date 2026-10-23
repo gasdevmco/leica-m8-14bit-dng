@@ -21,7 +21,7 @@ Needs only Python 3 (standard library).
 """
 import hashlib, os, sys
 
-VERSION = '0.3.0'                   # project version (CHANGELOG.md), not a Leica firmware version
+VERSION = '0.4.0'                   # project version (CHANGELOG.md), not a Leica firmware version
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, 'tools'))
 from m8_rawpatch import KNOWN_INPUTS, PATCHES as RAW_PATCHES, find_lump
@@ -36,11 +36,11 @@ TESTED = {
                               'tested on a camera (2026-10-21)'),
     ('dng', '2.014', True): ('32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8',
                              'tested on a camera (2026-10-23)'),
+    ('raw-menu', '2.014', True): ('fa4ae63a22e2df9749e989ccc570808ac24dabe1a3992593c4c37d27ad6c1c43',
+                                  'tested on a camera (2026-10-23)'),
 }
 # Built and emulator-tested, waiting for a camera test: refused until then.
-PENDING = {
-    ('raw-menu', '2.014', True): 'fa4ae63a22e2df9749e989ccc570808ac24dabe1a3992593c4c37d27ad6c1c43',
-}
+PENDING = {}
 INFO_STAGE = {'raw-menu': 10, 'dng': 8}     # m8_dngpatch stages: the option + INFO Camera stats
 CARD_NAME = {'2.014': 'M8-2_014.UPD'}
 OPTIONS = {'raw-menu': 'Option 1: JPG fine+RAW in the menu, kept after power-off',

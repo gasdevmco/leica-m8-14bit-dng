@@ -10,7 +10,10 @@ Tools for patching the firmware of the **Leica M8** so it can:
    camera's own DNG mode is 8-bit (companded); this keeps the full sensor data and needs no
    conversion step.
 
-> **Status: tested on one camera.** Both patches run on the author's M8 with firmware 2.014. They are
+Optional add-on for either option: **INFO shows Camera stats.** In shooting mode the INFO button
+shows the shutter count, battery, temperature and lens code (experimental).
+
+> **Status: tested on one camera.** Both patches and the `--info` add-on run on the author's M8 with firmware 2.014. They are
 > experimental, not affiliated with or endorsed by Leica, and flashing modified firmware is at your
 > own risk. Read [Safety and recovery](#safety-and-recovery) before flashing anything.
 
@@ -72,6 +75,21 @@ faster and each shot takes longer to save.
 Pick Option 1 if you're happy converting files on the computer. Pick Option 2 to open the files in
 Lightroom straight from the card.
 
+### Add-on: INFO Camera stats (`--info`, experimental)
+
+Either option can include a Camera stats screen. On a stock M8 the INFO button does nothing in
+shooting mode; with `--info` it shows:
+
+| Shots taken | Battery | Temperature | Lens code | Firmware |
+|---|---|---|---|---|
+| the body's shutter counter | Empty … Full | the body's reading, shown as °C | the code the body reads from the lens mount | 2.014 + INFO |
+
+INFO or SET closes it; every other key is ignored while it is open. The values are the ones Leica's
+hidden service page "Body Debug Data" shows; the screen asks the body controller for them the same
+way that page does (a read-only request). Service mode is unchanged: after the service button
+sequence, INFO still opens the service menu. The screen is in English only. Tested on the author's
+camera with both options.
+
 With Option 2, each JPG fine+RAW shot produces:
 
 - `L10xxxxx.JPG`: the camera's normal JPG, used by in-camera review.
@@ -101,12 +119,16 @@ python3 m8patch.py raw-menu  ~/Downloads/m8-2_014.upd     # Option 1
 python3 m8patch.py dng       ~/Downloads/m8-2_014.upd     # Option 2
 ```
 
+Add `--info` to either command for the Camera stats add-on, for example
+`python3 m8patch.py dng ~/Downloads/m8-2_014.upd --info`.
+
 The script:
 
 - only reads your stock file and never changes it;
 - refuses anything that isn't Leica's unmodified 2.014 file;
-- writes the result to `build/m8-2_014-raw-menu.upd` or `build/m8-2_014-dng.upd`. It never
-  overwrites an existing file; `--out-dir DIR` writes somewhere else;
+- writes the result to `build/m8-2_014-raw-menu.upd` or `build/m8-2_014-dng.upd` (with `--info`:
+  `…-raw-menu-info.upd`, `…-dng-info.upd`). It never overwrites an existing file; `--out-dir DIR`
+  writes somewhere else;
 - writes it only if it is byte-identical to the build tested by the author, and prints its SHA-256
   and the next steps.
 
@@ -114,6 +136,8 @@ The script:
 |---|---|
 | Option 1, 2.014 | `f6589c41a583d1a44fbce77c4acda707640d255acec97a0d2e1ac829c2e70396` |
 | Option 2, 2.014 | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` |
+| Option 1 + `--info`, 2.014 | `fa4ae63a22e2df9749e989ccc570808ac24dabe1a3992593c4c37d27ad6c1c43` |
+| Option 2 + `--info`, 2.014 | `32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8` |
 
 ## Flash it
 
@@ -124,7 +148,7 @@ The script:
 4. Run the camera's normal firmware update, the same as for Leica's own file. The progress bar
    usually pauses around 60% before completing. **Don't touch the battery or card while it runs.**
 5. After the restart: SET → Compression → **JPG fine+RAW**. Take a test shot and check it on the
-   computer.
+   computer. With `--info`, press INFO in shooting mode: Camera stats appears, INFO or SET closes it.
 
 ## Safety and recovery
 
@@ -133,7 +157,9 @@ all), the SD-card updater, startup code, settings load/save, and every other par
 (DSP, FPGA, body controller, fonts, lens table) byte-identical. The patch scripts check this
 automatically on every build. The new DNG code runs only while a JPG fine+RAW shot is being saved,
 never at startup or during an update. It writes only into the unused last sensor row of the image
-buffer, and it range-checks every write.
+buffer, and it range-checks every write. The `--info` code runs only when INFO is pressed in shooting
+mode; it opens the screen the way the camera's own service menu does, draws with the camera's own
+drawing routines, and changes no settings.
 
 **Rolling back.** The updater accepts the same or an older version, so flashing the stock
 `m8-2_014.upd` from the card always returns the camera to stock. The author has done
@@ -163,6 +189,9 @@ patched → stock → patched on hardware. Before sending the camera to Leica fo
 - **`.BIA` dark frames** (written for long exposures) also get the TIFF header bytes, but no DNG tags.
   Converters that skip the header, such as m8raw2dng2, aren't affected.
 - **Firmware 2.014 only.** Other versions haven't been tested, and the scripts refuse them.
+- **`--info`:** the screen is English only, and the temperature is the body's own reading, shown as
+  °C. If the camera is switched off while Camera stats is open, the service page "Body Debug Data"
+  shows Camera stats instead until the next restart (no effect outside service mode).
 
 ## How it works
 
@@ -184,6 +213,10 @@ analysis with Capstone and Ghidra, then checked in an emulator and on the camera
 
   The pixels are never touched or copied, and the file size, timing and write path stay as in stock
   RAW mode.
+- **INFO Camera stats (`--info`):** one branch in the GUI's key handler sends INFO (outside service
+  mode, where stock ignores it) to new code in the space of two unused Blackfin-test debug commands.
+  It opens the service menu's Body Debug Data dialog the way the service menu does, with its own
+  drawing and key methods while open, and restores the dialog's methods on close.
 
 Every address, offset and decision, with the evidence for it, is in
 [`docs/FINDINGS.md`](docs/FINDINGS.md). The design, staging and risk assessment are in
@@ -199,9 +232,9 @@ Every address, offset and decision, with the evidence for it, is in
   kept for diagnosis: 1 = header canary, 2 = new code present but not hooked in, 3 = metadata dump,
   5 = `.DNG` names. It prints every changed instruction and checks that nothing outside the
   declared regions changed.
-- Stages 6–8 are **experimental**, are tested only on the author's camera, and aren't offered by
-  `m8patch.py`. Each is stage 4 plus an INFO-button screen in shooting mode. Stage 8 shows camera
-  stats (shot count, battery, temperature, lens code). See `docs/FINDINGS.md`, "GUI".
+- INFO add-on: stage 8 = Option 2 + `--info`, stage 10 = Option 1 + `--info` (both camera-tested).
+  Stages 6 (INFO opens the service page) and 7 (an INFO histogram, dropped) are kept as history.
+  See `docs/FINDINGS.md`, "GUI".
 
 ```sh
 python3 -m venv work/venv && work/venv/bin/pip install -r requirements.txt   # Capstone, Unicorn, …
@@ -227,8 +260,8 @@ at the end and prints little before that, so a long silence is normal.
 | `m8_savetest.py --stage 4` | Option 2: one build through the save path | ~2.5 min |
 | `m8_savetest.py --quick` | every stage, fewer variants per sample | ~3.5 min |
 | `m8_savetest.py` | every stage, all variants | ~9 min |
-| `m8_infotest.py` | experimental INFO builds (stages 6–8): key handling | ~10 s |
-| `m8_inforender.py` | experimental INFO screen: renders it with the camera's drawing code | ~2 s |
+| `m8_infotest.py` | `--info` builds (stages 6–10): key handling, every key in every GUI state | ~10 s |
+| `m8_inforender.py` | `--info` screen: renders it with the camera's drawing code (PNG) | ~2 s |
 
 `m8_savetest.py` runs the real store routine, DMA handler, ring buffer and RAW writer. It models the
 DMA controller and the card-writer task. For each build it compares the file that reaches the "card"
@@ -243,10 +276,10 @@ names. `m8_emutest.py` needs the RAW-patch build at `firmware/patched/m8-2_014.u
 
 | Path | Contents |
 |---|---|
-| `m8patch.py` | Build Option 1 or Option 2 from your stock file (start here) |
+| `m8patch.py` | Build Option 1 or Option 2 (optionally `--info`) from your stock file (start here) |
 | `CHANGELOG.md` | Versions of this project, with the build hash of each option |
 | `tools/m8_rawpatch.py` | Persistent-RAW patch (2.014) |
-| `tools/m8_dngpatch.py` | In-camera DNG builds (`--stage 1…8`; 6–8 experimental), with region and hash checks |
+| `tools/m8_dngpatch.py` | Staged builds (`--stage 1…10`: DNG 1–5, INFO 6–10), with region and hash checks |
 | `tools/asm/` | Assembly source of the new code (DNG: `m8_header.s`, `m8_dnghook.s`; INFO: `m8_info*.s`) |
 | `tools/m8_asm.py` | Assembles one source with clang and checks it against the frozen bytes |
 | `tools/m8_wrapdng.py` | Desktop RAW → DNG wrapper; the reference for the in-camera file and its tag template |
