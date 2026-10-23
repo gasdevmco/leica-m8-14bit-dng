@@ -27,6 +27,8 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
 - `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples (~2 min):
   `work/venv/bin/python tools/m8_savetest.py [--stage N] [--quick] [-v]`
 - `tools/m8_reclaim.py` — ranks debug-command handlers as reclaimable space: `work/venv/bin/python tools/m8_reclaim.py`
+- `tools/m8_font.py` — decodes the GUI fonts, renders text or a glyph sheet (read-only):
+  `work/venv/bin/python tools/m8_font.py work/split-2.014/GUI_FONT1.bin text "ISO 640" out.png`
 - `tools/ghidra/` — headless Ghidra scripts (M8Pre seed/options, M8Xrefs refs into ranges, M8Coverage).
   Ghidra 12.1.4 + Temurin JDK 21 unpacked in `work/ghidra/` (re-download if work/ is wiped). Run:
   `JAVA_HOME=work/ghidra/jdk-21.0.12.1+1/Contents/Home work/ghidra/ghidra_12.1.4_PUBLIC/support/analyzeHeadless work/ghidra/proj m8 -import work/split-2.014/PXA.bin -overwrite -loader BinaryLoader -loader-baseAddr 0x20000 -processor ARM:LE:32:v5t -scriptPath tools/ghidra -preScript M8Pre.java -postScript M8Xrefs.java name:lo:hi ...`

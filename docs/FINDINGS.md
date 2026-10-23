@@ -500,6 +500,45 @@ L1031919 (ISO 160, different scene). File-level evidence only; the firmware rout
   by the PXA tag writers**; most likely the Blackfin DSP (JPEG pipeline, auto WB). Where the neutral
   sits in PXA memory at hook time in JPG fine+RAW mode is unknown.
 
+## GUI: screen, fonts, keys, windows (static, 2026-10-23, research for an INFO screen)
+
+Read-only research; nothing patched. Goal: a shooting-mode INFO screen (INFO does nothing in
+shooting mode on the camera; the top LCD shows battery and shots left).
+- **Screen:** 320×240, 24-bit (3 bytes/pixel, "8:8:8"). Debug `fb` (0x257B8) streams `frames.bin`
+  in 0x38400-byte frames into it. Display object = `[ctx+0x4210]` (ctx = `[0xD4220]`); vtable
+  +0x14 = get framebuffer pointer, +0x1C = release/show. Debug `screenshot` 0x25A08, `readbmp`.
+- **Fonts** (`tools/m8_font.py` decodes and renders them): the GUI lump has TRANS, IMAGES, FONT1, FONT2
+  (no FONT3/4; the loader 0x414D4 then returns -1 after FONT2, harmlessly). No font name anywhere;
+  the glyphs look like Arial (65,440 glyphs → probably Arial Unicode MS, rendered).
+  - Last 20 bytes `<5I`: line height (FONT1 17, FONT2 21), descent (4, 5), glyph count
+    (0xFFA0, 0x9FA6), glyph-table offset, 0. Registered by 0x886FC into the table at 0x17F98C
+    (20 bytes per font; +0xC/+0x10 relocated to pointers).
+  - Glyph table: 12 bytes per Unicode code point: x off (s8), y off (s8), w, h, advance, 3 pad,
+    bitmap offset (u32). Bitmaps 1 bpp, MSB first, rows padded to bytes.
+  - Text width 0x99C0C(str, font) (70 callers; UTF-8 via 0x991C0); wrapped text in a box 0x99494.
+- **Keys:** events are posted to ctx (0x8B6F4): +0 type 0xA press / 0xB release, +0x10 key code
+  (debug `key <c>` 0x279F4 sends the first character of its argument). Keypad driver 0x964E0
+  (PXA keypad 0x415000xx); table at 0xF0DF8, 12-byte entries {code, bit, 0}:
+  `u` `d` `l` `r` (matrix 7, 4, 6, 3), `m` 5, `v` 2, `x` 1, `t` 0, **`i` direct key 0**,
+  `s` direct key 1. Reading (inferred from the letters): pad, MENU, PLAY (view), DELETE, PROTECT,
+  **INFO**, SET.
+- **Windows:** C++ classes, no RTTI names. Generic constructor 0x9AA08(this, parent, x, y, w, h,
+  name, flags); **vtable +0x2C = key handler** (keys forwarded to children via `ldr pc,[r3,#0x2c]`).
+  Named windows: GUI::Desktop (vtable 0xEE450, size from the display object), InformationPage
+  (0x46790, vtable 0xEBFA4; builds NavigationWindow + Statusline; tied to the gallery = playback
+  info), gallery, AutoReviewHist, MultiGallery, NavigationWindow, Statusline, FocusFrame,
+  Scrollbar, MDPopUpMenu, evfastaccess, lensinfo; 24 more constructions without a name.
+- SET-menu item classes: 13 vtables (constructors 0x4DBB8–0x501A0); e.g. 0x58560 handles `s`
+  (permission 0x9AF84, then sub-window), `m`/`v` (state change 0x40360), others → base 0x56B2C.
+- **Shutter count:** service menu `camInfoMenu` (built 0x651D8, opened from 0x404E8 / 0x40908 next to
+  the service gate) → "Body Debug Data" = BodyDebugDataDialog (0x60F94…0x61AB4). It requests one debug
+  block from the body ("Getting Debug Data failed!" on error) and prints **`NumExposures: %d`**
+  (0x61688), battery state, temperature, BV intern/extern, body exposure time/aperture, lens code,
+  main switch, release switch, flash present. A stats screen could reuse that request; confirm it is
+  a pure read (same link carries body EEPROM / update commands) before using it.
+- Still open: which window owns shooting mode (where `i` is dropped), the pixel/rectangle/glyph
+  drawing primitives, and an emulated render of a window into an image.
+
 ## Known 2.024 issue
 
 Some bodies stop saving images after 2.024 (LED blinks, nothing written). Fixed for some
