@@ -8,6 +8,9 @@ Goal 2: have the camera write 14-bit DNG directly — DONE (2026-10-20). Chosen 
 named `.RAW`; Lightroom opens the `.RAW` as is. Stage 5 (`.DNG` names) worked in Lightroom but broke
 in-camera review (shows the DNG filename, can't reach the JPG), so it was rolled back.
 Rollback chain: stage 1 / `firmware/patched/m8-2_014.upd` / stock.
+On the author's camera since 2026-10-23: **stage 6** (`f8e8138d…` = stage 4 + INFO in shooting mode
+opens Body Debug Data; FINDINGS "GUI"); roll back to stage 4. Public Option 2 (`m8patch.py dng`) stays stage 4.
+Next (owner's plan): INFO cycles last-shot histogram → camera stats → off.
 
 Read `docs/FINDINGS.md` first — it holds every address, offset, hash and conclusion so far.
 For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constraints, firmware leads and step-by-step work plan.

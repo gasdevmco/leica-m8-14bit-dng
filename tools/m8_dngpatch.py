@@ -12,7 +12,7 @@ stage. Stages are not cumulative: each is a complete build, one flash per stage.
   3      canary, ldimg (dump), hook      metadata offsets, from the camera     emulator-tested
   4      tiff, ldimg, hook               first in-camera 14-bit DNG (.RAW)     emulator-tested
   5      tiff, ldimg, hook, ext          files named .DNG                      emulator-tested
-  6      stage 4 + info, info key        INFO opens Body Debug Data            in progress
+  6      stage 4 + info, info key        INFO opens Body Debug Data            camera-tested 2026-10-23
 
 Pieces (each in one declared region, REGIONS):
   canary  0x3CEA0 mov r0,#7 -> #0xA5: RAW header u16[3] = 0xA5
@@ -204,7 +204,7 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c': 'stage 4, BlackLevel per ISO, m8_savetest 150/0; flashed and camera-tested 2026-10-21 (current)',
     '00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce': 'stage 5, BlackLevel per ISO, m8_savetest 150/0 (2026-10-21); not flashed',
     'f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c':
-        'stage 6, INFO -> Body Debug Data; m8_infotest 14/0, m8_savetest 49/0 (2026-10-23); not flashed',
+        'stage 6, INFO -> Body Debug Data; m8_infotest 14/0, m8_savetest 49/0; flashed and camera-tested 2026-10-23',
 }
 
 

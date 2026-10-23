@@ -291,7 +291,7 @@ and compares):
 | 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca` | emulator 145/0; not flashed |
 | 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **flashed, camera-tested 2026-10-21 — current build**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
 | 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce` | emulator 150/0; not flashed (previous `d9a94feb…` flashed 2026-10-20, rolled back: in-camera review) |
-| 6 | stage 4 + info, info key (INFO → Body Debug Data) | `…-stage6.upd` | `f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c` | m8_infotest 14/0, m8_savetest 49/0 (2026-10-23); not flashed. See "GUI" |
+| 6 | stage 4 + info, info key (INFO → Body Debug Data) | `…-stage6.upd` | `f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c` | m8_infotest 14/0, m8_savetest 49/0; **flashed, camera-tested 2026-10-23**: INFO opens Body Debug Data, SET closes it, INFO again does not (as in service mode). See "GUI" |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
 same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the
@@ -579,6 +579,8 @@ shooting mode on the camera; the top LCD shows battery and shots left).
   INFO branch and the debug-command registration literal 0x2DAC0 (initializer 0x2C9F4).
   Not modelled: what the GUI does inside 0x58FE8 / 0x40360 / the dialog (drawing, timer, body
   request 0x33) -- that is the camera's own code path, reached today via service mode.
+  **Camera test 2026-10-23 [tested]:** INFO in shooting mode shows Body Debug Data; SET closes it
+  back to shooting; INFO while it is open does nothing (dialog ignores `i`, same as via service mode).
 - Still open: the pixel/rectangle/glyph drawing primitives, how a page is allocated/shown/closed
   outside startup, and an emulated render of a window into an image.
 
