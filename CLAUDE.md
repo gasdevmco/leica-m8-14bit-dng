@@ -22,7 +22,9 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
 - `tools/m8_rawpatch.py` — `python3 tools/m8_rawpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014.upd`
 - `tools/m8_emutest.py` — Unicorn test of the RAW patch: `work/venv/bin/python tools/m8_emutest.py [-v]`
 - `tools/m8_dngpatch.py` — staged DNG builds: `work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014-stageN.upd --stage N`
-- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`); `tools/m8_asm.py X.s`
+- `tools/m8_infotest.py` — INFO build (stage 6) vs stage 4: real key handler, all keys and GUI states (~5 s):
+  `work/venv/bin/python tools/m8_infotest.py [-v]`
+- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`, `m8_info.s`); `tools/m8_asm.py X.s`
   assembles one and prints bytes + SHA-256 (the patch script carries the frozen bytes).
 - `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples (~2 min):
   `work/venv/bin/python tools/m8_savetest.py [--stage N] [--quick] [-v]`
@@ -58,6 +60,14 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
     (power-state changes and card insert/remove save settings to EEPROM; a battery pull saves nothing).
   - Before any new flash: rollback drill done once (patched → stock → patched), full battery,
     scratch card for shooting, separate recovery card holding only the stock .upd.
+- INFO / GUI work (stage 6+, FINDINGS "GUI"): same rules as DNG work, plus
+  - Hook only the application key handler's INFO case outside service mode (0x44F68); service mode
+    and the `lensinfo` case stay stock. New code runs only when INFO is pressed, never at startup.
+  - New code may call only existing GUI routines with the arguments the firmware itself uses for the
+    same page, and may write only the GUI flag bytes the firmware's own path writes (app+0x2548F,
+    camInfoMenu+0x99) and its stack. Body link: only command 0x33 (debug data, a read), and only
+    through the existing dialog. `tools/m8_infotest.py` fails on any other call or write.
+  - Never open other service pages (Production Test, EEPROM Check, Hardware ID's, …) from new code.
 - Firmware is Leica's copyright: keep private; never publish .upd files or push them to a public remote.
 - Python deps: `python3 -m venv work/venv && work/venv/bin/pip install -r requirements.txt`.
 - New code: assemble with Apple clang `--target=armv5te-none-eabi -march=armv5te -marm`, write it in

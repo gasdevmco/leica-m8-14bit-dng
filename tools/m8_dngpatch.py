@@ -12,6 +12,7 @@ stage. Stages are not cumulative: each is a complete build, one flash per stage.
   3      canary, ldimg (dump), hook      metadata offsets, from the camera     emulator-tested
   4      tiff, ldimg, hook               first in-camera 14-bit DNG (.RAW)     emulator-tested
   5      tiff, ldimg, hook, ext          files named .DNG                      emulator-tested
+  6      stage 4 + info, info key        INFO opens Body Debug Data            in progress
 
 Pieces (each in one declared region, REGIONS):
   canary  0x3CEA0 mov r0,#7 -> #0xA5: RAW header u16[3] = 0xA5
@@ -21,6 +22,9 @@ Pieces (each in one declared region, REGIONS):
           returning 0. "ldimg (dump)" = same bytes with mode 1 instead of 2.
   hook    0x3C6A8 b 0x3C5EC -> bl 0x28AB8 (RAW producer, last block)
   ext     0x3CFF8 store routine's "RAW" literal 0xD6590 -> "DNG" 0xD6570 (only reader: 0x3CCE0)
+  info    0x2ABD0-0x2AF90 bf_memtest1 debug command -> stub returning 0 + info_open
+          (tools/asm/m8_info.s), rest undefined fill
+  info key 0x44F68 bne 0x44F8C -> bne 0x2ABD8 (INFO in shooting mode, not in service mode)
 
 Assembled bytes are frozen here with their SHA-256; m8_savetest.py reassembles the sources and
 fails if they no longer match.
@@ -54,6 +58,8 @@ REGIONS = {
     'hook':   (0x3C6A8, 0x3C6AC),   # last-block branch of the RAW producer (b 0x3C5EC)
     'ldimg':  (0x28AB0, 0x29104),   # reclaimed debug command, incl. literal pool
     'ext':    (0x3CFF8, 0x3CFFC),   # store routine's literal -> "RAW" (0xD6590)
+    'memtest': (0x2ABD0, 0x2AF90),  # reclaimed debug command bf_memtest1, incl. literal pool
+    'infokey': (0x44F68, 0x44F6C),  # application key handler, INFO outside service mode (bne 0x44F8C)
 }
 
 # tools/asm/m8_header.s at 0x3CE48 (46 instructions, replaces the stock block of the same size)
@@ -86,6 +92,14 @@ LDIMG_STOCK_SHA = 'c28db4ffa67195ca427394eb3e21a6c2ff6e9a3a89a37ac0150f3e802019f
 TEMPLATE_SHA = '5cb22fb2582678f4abacd6d0e85378179c3485f515d8251a3b0b683d1e564052'   # 902 bytes
 UDF = bytes.fromhex('f000f0e7')            # permanently undefined: fills the unused rest of ldimg
 MODE_DUMP, MODE_DNG = 1, 2
+
+# tools/asm/m8_info.s at 0x2ABD0 (stub, info_open, literal pool)
+INFO_CODE = bytes.fromhex(
+    '0000a0e31eff2fe16f0c84e26c0080e20110a0e30fe0a0e12cf09fe5953b84e20120a0e38f20c3e56f0c84e26c0080e2'
+    '0030a0e39930c0e54e0f80e20110a0e30fe0a0e104f09fe504f09fe5e88f0500600304008c4f0400')
+INFO_CODE_SHA = 'cf764d835d8d5b43ac1bff1fbff14a2e9acdce8587203c76fcb4a7a30440adc3'
+INFO_ENTRY = 0x2ABD8                       # info_open
+MEMTEST_STOCK_SHA = 'f98abdafa6f9e473a2ba1c827600420fd762d0d266a94a92b3f96380a075a5b3'
 
 
 def template():
@@ -135,8 +149,19 @@ def ldimg_blob(mode):
     return b + UDF * ((hi - lo - len(b)) // 4)
 
 
+def memtest_blob():
+    if hashlib.sha256(INFO_CODE).hexdigest() != INFO_CODE_SHA:
+        raise SystemExit('INFO_CODE does not match its SHA-256')
+    lo, hi = REGIONS['memtest']
+    return INFO_CODE + UDF * ((hi - lo - len(INFO_CODE)) // 4)
+
+
 def bl(src, dst):
     return struct.pack('<I', 0xEB000000 | (((dst - src - 8) >> 2) & 0xFFFFFF))
+
+
+def bne(src, dst):
+    return struct.pack('<I', 0x1A000000 | (((dst - src - 8) >> 2) & 0xFFFFFF))
 
 
 def pieces():
@@ -151,6 +176,8 @@ def pieces():
         'ldimg (dump)': ('ldimg', lo, LDIMG_STOCK_SHA, ldimg_blob(MODE_DUMP)),
         'hook': ('hook', 0x3C6A8, bytes.fromhex('cfffffea'), bl(0x3C6A8, HOOK_ENTRY)),
         'ext': ('ext', 0x3CFF8, struct.pack('<I', 0xD6590), struct.pack('<I', 0xD6570)),
+        'info': ('memtest', REGIONS['memtest'][0], MEMTEST_STOCK_SHA, memtest_blob()),
+        'info key': ('infokey', 0x44F68, bytes.fromhex('0700001a'), bne(0x44F68, INFO_ENTRY)),
     }
 
 
@@ -161,6 +188,7 @@ STAGES = {
     3: ('hook on, job metadata dump into the trailing row; canary kept', ['canary', 'ldimg (dump)', 'hook']),
     4: ('hook on, TIFF header + IFD template: 14-bit DNG content, still named .RAW', ['tiff', 'ldimg', 'hook']),
     5: ('as stage 4, files named .DNG', ['tiff', 'ldimg', 'hook', 'ext']),
+    6: ('as stage 4, plus INFO in shooting mode opens Body Debug Data', ['tiff', 'ldimg', 'hook', 'info', 'info key']),
 }
 KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66':
@@ -175,6 +203,8 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca': 'stage 3, m8_savetest 150/0 (2026-10-21); not flashed',
     '55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c': 'stage 4, BlackLevel per ISO, m8_savetest 150/0; flashed and camera-tested 2026-10-21 (current)',
     '00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce': 'stage 5, BlackLevel per ISO, m8_savetest 150/0 (2026-10-21); not flashed',
+    'f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c':
+        'stage 6, INFO -> Body Debug Data; m8_infotest 14/0, m8_savetest 49/0 (2026-10-23); not flashed',
 }
 
 
@@ -268,9 +298,10 @@ def show(base, new):
     words = sorted({(s & ~3) + k for s, e in changed_ranges(pa, pb) for k in range(0, e - (s & ~3), 4)})
     lo, hi = REGIONS['ldimg']
     data = [o for o in words if TABLES <= PXA_BASE + o < hi]
+    fill = [o for o in words if pb[o:o + 4] == UDF and not TABLES <= PXA_BASE + o < hi]
     for o in words:
         va = PXA_BASE + o
-        if TABLES <= va < hi:
+        if TABLES <= va < hi or o in fill:
             continue
         old = next(md.disasm(pa[o:o + 4], va), None)
         neu = next(md.disasm(pb[o:o + 4], va), None)
@@ -284,6 +315,9 @@ def show(base, new):
               f'(sha {hashlib.sha256(b[28 + 8 * nslots:used]).hexdigest()[:8]}), '
               f'BlackLevel at template+{boff}, ISO steps {struct.unpack_from("<4H", b, 16)}, '
               f'{hi - TABLES - used} bytes padding/undefined fill')
+    if fill:
+        print(f'  {len(fill)} more word(s) set to undefined fill (udf) outside the ldimg tables, '
+              f'0x{PXA_BASE + fill[0]:X}-0x{PXA_BASE + fill[-1] + 4:X}')
 
 
 def main():

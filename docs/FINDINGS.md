@@ -101,7 +101,8 @@ strings, new lens names in 2.024, and one ~400-byte code change at 0xAE8BC.
 - Gate function **0x403F0** returns 0 when service mode is active. Its only callers:
   timing log (0x3D564), the dance handlers (0x44C84, 0x44EB8, 0x44F50, 0x44F60),
   SET-menu loader (0x4EEC8, 0x4F0C0). **Capture/save code never checks it.**
-- `+0x2558F` byte = "debug menu open" (blocks normal key handling); unrelated to capture.
+- `+0x2548F` byte = "debug menu open" (blocks normal key handling); unrelated to capture. (Was noted
+  as +0x2558F until 2026-10-23: a typo; 0x44F7C-0x44F88 and camInfoMenu 0x654E4 use 0x25400 + 0x8F.)
 
 ## Why RAW resets
 
@@ -290,6 +291,7 @@ and compares):
 | 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca` | emulator 145/0; not flashed |
 | 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **flashed, camera-tested 2026-10-21 — current build**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
 | 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce` | emulator 150/0; not flashed (previous `d9a94feb…` flashed 2026-10-20, rolled back: in-camera review) |
+| 6 | stage 4 + info, info key (INFO → Body Debug Data) | `…-stage6.upd` | `f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c` | m8_infotest 14/0, m8_savetest 49/0 (2026-10-23); not flashed. See "GUI" |
 
 Stage 1 emulator result: the file differs from the camera sample only at byte 6; same call trace,
 same header-block write addresses and DMA/ring bookkeeping as the flashed build; .BIA files get the
@@ -534,10 +536,51 @@ shooting mode on the camera; the top LCD shows battery and shots left).
   the service gate) → "Body Debug Data" = BodyDebugDataDialog (0x60F94…0x61AB4). It requests one debug
   block from the body ("Getting Debug Data failed!" on error) and prints **`NumExposures: %d`**
   (0x61688), battery state, temperature, BV intern/extern, body exposure time/aperture, lens code,
-  main switch, release switch, flash present. A stats screen could reuse that request; confirm it is
-  a pure read (same link carries body EEPROM / update commands) before using it.
-- Still open: which window owns shooting mode (where `i` is dropped), the pixel/rectangle/glyph
-  drawing primitives, and an emulated render of a window into an image.
+  main switch, release switch, flash present.
+  - Paint 0x610A0: fetch 0x60FC0(this) → **0x3E238(`[0xD421C]+0x50C0`, this+0xB0)** → 0x3FFE4: sends the
+    1-byte command **0x33** via 0x93BA8(link, cmd, 1, reply, &len), needs a 29-byte reply (else
+    "Getting Debug Data failed!"), unpacks it; then re-arms a 100 ms timer (0x8BD10, id 0x271E).
+  - Body-link commands by sender: 0x03 version (`rver`), 0x22 read parameter (`rgpara`), 0x29 read
+    body EEPROM (`rree`, settings loader), 0x3FF0C write body EEPROM (`rwee`, settings writer 0x21064),
+    0x18 event (`revent`), 0x07 (startup 0x35C68), 0x08 (update flow among others), 0x13, 0x23.
+    **0x33 is used only by Body Debug Data** and carries no address or data, so it cannot write
+    anything chosen by the caller; the service page sends it every 100 ms. Not verified on the M16C
+    side (its handler for 0x33 is unread). A stats page should send it once per open.
+- **Key path in shooting mode:** GUI task event table 0xEF22C (also holds timer 0x271E, power 0x190):
+  key release (0xB) → **0x444D8**: posts 0x2AFD to `[0xD4214]`, special-cases `'a'`/`'S'`, then calls
+  the focused window (`0x9A464` = `[0x17FE44]`) vtable +0x2C. With no page open the focus is the
+  desktop (`[0x17FE40]`, vtable 0xEE450), whose +0x2C (0x9CB40) forwards to its owner `[desktop+0x44]`
+  = the **GUI application** (constructor 0x40428 / 0x40848, base 0x9A3E0, vtable **0xEBF34**; pages
+  are members: camInfoMenu +0x6F6C, lensinfo +0x8440, "Firmware Update" page built at 0x40608).
+  Page show/hide: 0x40360(page, show) / 0x58FE8(page, 1); hiding back to the desktop clears
+  `app+0x25731`.
+- **Application key handler 0x44E30** (vtable +0x2C): switch on key-0x69 → `'i'` 0x44F18, `'m'` 0x44FFC,
+  `'s'` 0x44FD8, `'v'` 0x44F90, others ignored (0x44F8C). **INFO:** if `app+0x254B0`==0 and the
+  service gate 0x403F0(app+0x254A0) says active → show camInfoMenu (0x58FE8(app+0x6F6C, 1)) and set
+  `app+0x2548F`=1 (the service menu, incl. Body Debug Data); **not in service mode → ignored by the
+  branch at 0x44F68 (`bne 0x44F8C`)** = the hook point for an INFO screen (service path unchanged).
+- **Opening Body Debug Data from INFO** (stage 6): the dialog is camInfoMenu+0x138 = app+0x70A4
+  (vtable 0xED1B8, base dialog 0x6046C, parent = camInfoMenu). The menu opens it from its item
+  handler 0x65570 (item menu+0x5E0): menu+0x99 = 0, 0x40360(menu+0x138, 1). Window flag bit 4 at
+  +0x20 = hidden; show (0x9ADEC) clears it, redraws and focuses, without checking the parent, and
+  redraws start at the root -- so the dialog is opened the camera's way: menu first, then dialog.
+  Dialog keys (key-0x63): `u`/`c` up, `d`/`w` down, **`s` closes**: stops its timer, hides, sends
+  `'a'` to the menu; camInfoMenu on `'a'` (0x654C8) clears app+0x2548F and hides itself (vtable
+  +0x3C = 0x40360(this, 0)) → back to the desktop. Other keys are ignored while it is open.
+  `app+0x25741` set → INFO opens `lensinfo` (0x45088 → 0x66074(app+0x8440, 1)); set by the GUI's
+  event 0x28B0 handler 0x45BD0; untouched by stage 6.
+- **Stage 6** (`tools/asm/m8_info.s` in bf_memtest1 0x2ABD0-0x2AF90; 0x44F68 `bne 0x44F8C` → `bne 0x2ABD8`):
+  info_open (88 bytes incl. stub and literals) = show camInfoMenu (0x58FE8(app+0x6F6C, 1)),
+  app+0x2548F = 1, menu+0x99 = 0, 0x40360(app+0x70A4, 1), return through 0x44F8C.
+  `tools/m8_infotest.py`: runs the real key handler 0x44E30 + gate 0x403F0 on stage 4 and stage 6
+  for all 256 key codes in 7 GUI states and compares every call and non-stack write: identical
+  except INFO in the normal state, which adds exactly those two calls and two byte writes (the
+  values the firmware's own service path writes); the only references into the new code are the
+  INFO branch and the debug-command registration literal 0x2DAC0 (initializer 0x2C9F4).
+  Not modelled: what the GUI does inside 0x58FE8 / 0x40360 / the dialog (drawing, timer, body
+  request 0x33) -- that is the camera's own code path, reached today via service mode.
+- Still open: the pixel/rectangle/glyph drawing primitives, how a page is allocated/shown/closed
+  outside startup, and an emulated render of a window into an image.
 
 ## Known 2.024 issue
 
