@@ -291,7 +291,6 @@ and compares):
 | 3 | canary, ldimg mode 1 (dump), hook | `…-stage3.upd` | `77e35e778e5b945bc5f119ab399803b40eb5628a6b27f352717ea07059e4d2ca` | emulator 145/0; not flashed |
 | 4 | tiff, ldimg, hook (DNG content, named .RAW) | `…-stage4.upd` | `55264b11f86dd66e61f1412c5c341afdaa8553ce0d10ade270e52de1f24c944c` | emulator 150/0 (BlackLevel per ISO); **flashed, camera-tested 2026-10-21 — current build**. Previous: `59aff4a3…` (BlackLevel 92 at all ISOs) flashed and camera-tested 2026-10-20; first version `3b451b4d…` (date slot wrong) |
 | 5 | tiff, ldimg, hook, ext (named .DNG) | `…-stage5.upd` | `00ed8542ed2949d873d5c084024c5e5fe4a522a01a3d878462763c6f30fc53ce` | emulator 150/0; not flashed (previous `d9a94feb…` flashed 2026-10-20, rolled back: in-camera review) |
-| 9 | stage 8 + full-screen histogram (stats+hist, hist key d/u) | `…-stage9.upd` | `2464d5b20edc1fdd307f1bfa8b5820d1e3f8c645c5e6ac75a6eaf1a45ad466f3` | m8_infotest 50/0, m8_inforender 32/0, m8_savetest 49/0 (2026-10-23); not flashed. See "GUI" |
 | 8 | stage 4 + stats, stats key (INFO → Camera stats) | `…-stage8.upd` | `32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8` | m8_infotest 38/0, m8_inforender 7/0, m8_savetest 49/0; **flashed, camera-tested 2026-10-23 — current build on the author's camera**. See "GUI" |
 | 7 | stage 4 + screens, screens key (INFO → Last shot → Camera stats) | `…-stage7.upd` | `c88e77c0fc57d98f022c81fdad8e73d23430b591d344c223b84ac6364d61dae4` | m8_infotest 26/0, m8_inforender 13/0, m8_savetest 49/0; **flashed 2026-10-23**: screens work, but the histogram kept showing the first shot after later shots → replaced by stage 8. See "GUI" |
 | 6 | stage 4 + info, info key (INFO → Body Debug Data) | `…-stage6.upd` | `f8e8138d9b05cc546d76f7d1a2f5a7c6c7d223e9f798032155bb4c2fb656b07c` | m8_infotest 14/0, m8_savetest 49/0; **flashed, camera-tested 2026-10-23**: INFO opens Body Debug Data, SET closes it, INFO again does not (as in service mode). See "GUI" |
@@ -638,37 +637,6 @@ shooting mode on the camera; the top LCD shows battery and shots left).
   (vt_stats); INFO or SET closes (dialog+0 = 0xED1B8, then 0x61868); other keys ignored.
 - **Stage 8 camera test (2026-10-23) [tested]:** INFO shows Camera stats, INFO or SET closes it; works.
 - Still open: confirm the temperature "normal" value is °C.
-- **Playback histogram page (research for a full-screen histogram on up/down, 2026-10-23, static):**
-  - InformationPage (PLAY → INFO) key method 0x46C54 switches on key-0x63 (table 0x46C94, 22 words,
-    'c'..'x'): `l`/`r` 0x46D08 (prev/next picture), `c`/`w` 0x46E34 / 0x47094 (dial), `i` 0x46DA4,
-    `m` 0x46D80, `s` 0x46D40, `t` 0x46FC4, `v` 0x46F78, `x` 0x46E8C; **`u` and `d` → 0x46D04 = return:
-    up/down are unused on this page** (table words at 0x46C98 (`d`) and 0x46CDC (`u`)). Before the
-    switch: returns if app+0x2548C != 0.
-  - Histogram style = active profile u16 +0x10 (same profile rule as m8_emutest): 0 "Std. w/o
-    clipping", 1 "Std. with clipping", 2 "RGB w/o clipping", 3 "RGB with clipping" (strings
-    0xDF8F0…); 0x550EC: 0/1 → luma 0x7FC58, 2/3 → RGB 0x7FD84.
-  - Histogram object (0x7F9D0): luma max +0, R/G/B max +4/+8/+0xC; bins (256 x u32) luma +0x10,
-    R +0x410, G +0x810, B +0xC10. Each routine fills only its own part (luma clears +0x10..; RGB clears
-    +0x410..), so the style says which part is valid.
-  - The page's histogram widget (page+0x1128, set by 0x54934(widget, page+0x118)) holds at +0 the
-    pointer to the histogram object it draws → reading through it gives the histogram of the picture
-    on screen. (Who calls 0x550EC for it is unresolved: 0x55260 is only reached from inside itself.)
-  - Timers: none of the 16 timer starts (0x8BD10) is in 0x46000-0x48800; GUI timers 0x2728 (100 ms,
-    0x41BA0 countdown "%s\n%d s"), 0x271A (500 ms, 0x43B0C, body data + redraw), 0x2729 (3 s),
-    0x2717, 0x28A4. The playback info page has no repaint timer of its own.
-- **Stage 9: full-screen histogram** (`tools/asm/m8_infohist.s` = `.include "m8_infostats.s"` (stage 8's
-  bytes unchanged) + hist_key at **0x2B0E8**, in region bfmem 0x2ABD0-0x2B6E8 around the four kept
-  command stubs; key table words 0x46C98 ('d') and 0x46CDC ('u'): 0x46D04 → 0x2B0E8). On the playback
-  histogram page UP or DOWN: if marker pixels (8,4,8) are at (0,0) and (319,0) → page method +0x1C
-  (redraw, the camera's page returns); else draw over it: the histogram object from the page's widget
-  ([page+0x1128]; nothing if 0), style = active profile +0x10: 0/1 brightness filled, 2/3 R/G/B curves
-  (256 bins x 1 px, 150 px high, scaled to the largest bin 1..254), 1/3 also "Shadows x.x %" (bin 0)
-  and "Highlights x.x %" (bin 255; max over R/G/B) of all pixels. Returns through 0x46D04. Writes:
-  screen (GUI routines), stack. `m8_inforender.py --stage 9` fills the object with the camera's own
-  0x7FC58 / 0x7FD84 on a camera JPG, calls the real key method 0x46C54 with 'u' then 'd' for all four
-  styles: view drawn with no calls, markers set, second press → +0x1C only, stores only to
-  framebuffer / stack; no object → nothing. (Caught on the way: the RGB loop reused the channel
-  count register; style 3 read past the histogram — fixed before any flash.)
 
 ## Known 2.024 issue
 

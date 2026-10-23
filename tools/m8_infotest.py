@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Emulator test of the INFO builds (m8_dngpatch.py --stage 6 to 9) against stage 4.
+Emulator test of the INFO builds (m8_dngpatch.py --stage 6, 7 and 8) against stage 4.
 
 Runs the camera's real application key handler 0x44E30 (and the service gate 0x403F0) on both
 builds, for every key code in every GUI state below, and records each call out of the handler
@@ -148,9 +148,6 @@ def main():
               m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_infoscreens.s')) == d.SCREENS_CODE, True)
     res.check('m8_infostats.s reassembles to STATS_CODE',
               m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_infostats.s')) == d.STATS_CODE, True)
-    res.check('m8_infohist.s reassembles to HIST_CODE, starting with stage 8 unchanged',
-              (m8_asm.assemble(os.path.join(ROOT, 'tools/asm/m8_infohist.s')) == d.HIST_CODE,
-               d.HIST_CODE[:len(d.STATS_CODE)] == d.STATS_CODE), (True, True))
 
     common = [('call', 'dance_tracker', 'app+0x0', '0x69'),     # every key, before the switch
               ('call', 'f_41788', 'app+0x0', '0x0'),
@@ -167,20 +164,14 @@ def main():
             open_menu + [('write', 'app+0x70A4', 4, vt_address(7, 'vt_hist'))] + show_dialog),
         8: ('memtest12', ['word 0x2DAC0 = 0x2ABD0', 'word 0x2DACC = 0x2B0E0', 'branch 0x44F68'],
             open_menu + [('write', 'app+0x70A4', 4, vt_address(8, 'vt_stats'))] + show_dialog),
-        # + the playback info page key table words for 'd' / 'u' (full-screen histogram)
-        9: ('bfmem', ['word 0x2DAB0 = 0x2B4B0', 'word 0x2DAC0 = 0x2ABD0', 'word 0x2DACC = 0x2B0E0',
-                      'word 0x2DAD8 = 0x2B338', 'branch 0x44F68', 'word 0x46C98 = 0x2B0E8',
-                      'word 0x46CDC = 0x2B0E8'],
-            open_menu + [('write', 'app+0x70A4', 4, vt_address(9, 'vt_stats'))] + show_dialog),
     }
     unknown = set()
     for n, (region, want_refs, extra) in stages.items():
         _, sn = d.stage_file(stock, n)
         pn = d.pxa_of(sn)
         pos, size = d.find_lump(sn, b'PXA')
-        extra_regions = {'pagekey_d', 'pagekey_u'} if n == 9 else set()
-        res.check(f'stage {n} vs stage 4: changes only in {region} + infokey' + (' + page keys' if n == 9 else ''),
-                  d.region_violations(s4, sn, pos, size, {region, 'infokey'} | extra_regions), [])
+        res.check(f'stage {n} vs stage 4: changes only in {region} + infokey',
+                  d.region_violations(s4, sn, pos, size, {region, 'infokey'}), [])
         res.check(f'stage {n}: references into the new code', refs_into(pn, *d.REGIONS[region]), want_refs)
         # key handler, every key in every state, stage 4 vs stage n
         for state in STATES:
