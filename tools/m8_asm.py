@@ -15,7 +15,8 @@ FLAGS = ['--target=armv5te-none-eabi', '-march=armv5te', '-marm', '-c']
 def assemble(src):
     with tempfile.TemporaryDirectory() as d:
         obj = os.path.join(d, 'out.o')
-        subprocess.run(['clang', *FLAGS, src, '-o', obj], check=True)
+        subprocess.run(['clang', *FLAGS, '-I', os.path.dirname(os.path.abspath(src)), src, '-o', obj],
+                       check=True)                          # -I: `.include` of a sibling source
         elf = open(obj, 'rb').read()
     assert elf[:4] == b'\x7fELF' and elf[4] == 1 and elf[5] == 1, 'not ELF32 LE'
     shoff, = struct.unpack_from('<I', elf, 0x20)

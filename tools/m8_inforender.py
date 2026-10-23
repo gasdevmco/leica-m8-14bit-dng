@@ -16,7 +16,7 @@ Checks: the frozen stage-7 bytes equal the reassembled source; every store made 
 to the framebuffer or the stack; on_key switches pages, closes through the dialog's own SET path
 with its own method table restored, ignores other keys.
 
-Usage:  work/venv/bin/python tools/m8_inforender.py [image.JPG] [--stage 7|8] [--out DIR] [-v]
+Usage:  work/venv/bin/python tools/m8_inforender.py [image.JPG] [--stage 7|8|9] [--out DIR] [-v]
 Needs:  unicorn, Pillow (work/venv)
 """
 import os, struct, sys
@@ -33,7 +33,8 @@ from m8_rawpatch import PXA_BASE
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 # stage -> (source, region in m8_dngpatch.REGIONS, frozen-bytes attribute in m8_dngpatch)
 STAGES = {7: ('tools/asm/m8_infoscreens.s', 'bfmem', 'SCREENS_CODE'),
-          8: ('tools/asm/m8_infostats.s', 'memtest12', 'STATS_CODE')}
+          8: ('tools/asm/m8_infostats.s', 'memtest12', 'STATS_CODE'),
+          9: ('tools/asm/m8_infohist.s', 'bfmem', 'HIST_CODE')}
 STAGE = 8
 SRC = os.path.join(ROOT, STAGES[STAGE][0])
 LO, HI = d.REGIONS[STAGES[STAGE][1]]       # region of the new code
@@ -46,7 +47,10 @@ REAL = [(0x605AC, 0x606B4),                 # dialog base paint
         (0x98A40, 0x9A400),                 # GUI drawing: fill, lines, text
         (0xB3000, 0xBE000),                 # C library: memcpy, memset, sprintf
         (0xC7000, 0xCD000),                 # printf engine, integer divide / modulo
-        (0xCD34C, 0xCD378)]                 # window getters x, y, w, h, nop methods
+        (0xCD34C, 0xCD378),                 # window getters x, y, w, h, nop methods
+        (0x46C54, 0x46D08),                 # playback info page key method: switch + epilogue
+        (0x7FC58, 0x7FFE8)]                 # histogram routines (luma 0x7FC58, RGB 0x7FD84)
+PAGE, HOBJ, SETTINGS = 0x3500000, 0x3600000, 0x3700000
 DLG_VT = 0xED1B8
 
 
@@ -165,6 +169,69 @@ def review_image(path):
     return canvas.tobytes()
 
 
+def hist_overlay(res, pxa, gui, jpg, out, verbose):
+    """Stage 9: UP / DOWN on the playback histogram page, every MENU histogram style."""
+    image = review_image(jpg)
+    for style in range(4):
+        sc = Screen(pxa, gui, None)
+        e = sc.e
+        for base in (PAGE, HOBJ, SETTINGS):
+            e.uc.mem_map(base, 0x10000)
+        e.uc.mem_write(FB, image)                       # the camera's page underneath
+        e.uc.mem_write(IMG, image)
+        pvt = PAGE + 0x2000                             # page method table: +0x1C redraw
+        for i in range(0, 0x60, 4):
+            e.w32(pvt + i, SENTINEL + 0x400 + i)
+            e.stubs[SENTINEL + 0x400 + i] = sc._stub(f'page_method_{i:x}')
+        e.w32(PAGE, pvt)
+        e.w32(PAGE + 0x1128, HOBJ)                      # widget -> histogram object
+        e.w32(0xD4230, SETTINGS)                        # settings: profile 0 active, style
+        e.w16(SETTINGS, 0)
+        e.w16(SETTINGS + 2, 0xFFFF)
+        e.w16(SETTINGS + 0x1C + 0x10, style)
+        # the camera's own histogram routine for that style, on the photo area (as 0x550EC)
+        fn = 0x7FC58 if style < 2 else 0x7FD84
+        sp = STACK + 0xF000 - 0x10
+        e.w32(sp, 960)
+        uc = e.uc
+        uc.reg_write(UC_ARM_REG_R0, HOBJ)
+        uc.reg_write(UC_ARM_REG_R1, IMG + 0x30C0)
+        uc.reg_write(UC_ARM_REG_R2, 320)
+        uc.reg_write(UC_ARM_REG_R3, 214)
+        uc.reg_write(UC_ARM_REG_SP, sp)
+        uc.reg_write(UC_ARM_REG_LR, SENTINEL)
+        uc.emu_start(fn, SENTINEL, count=50_000_000)
+        sc.bad_writes.clear()
+        name = ['std', 'std-clip', 'rgb', 'rgb-clip'][style]
+        for n, key in ((1, 'u'), (2, 'd')):
+            sc.calls.clear()
+            try:
+                sc.call(0x46C54, PAGE, ord(key))
+                err = None
+            except Escape as x:
+                err = str(x)
+            res.check(f'hist {name}: {key.upper()} #{n} runs and returns through the page epilogue', err, None)
+            if n == 1:
+                res.check(f'hist {name}: view drawn without other calls', sc.calls, [])
+                res.check(f'hist {name}: marker pixels', (e.read(FB, 3), e.read(FB + 957, 3)),
+                          (bytes([8, 4, 8]), bytes([8, 4, 8])))
+                p = os.path.join(out, f'info9-hist-{name}.png')
+                sc.png(p)
+                if verbose:
+                    print('   ', p)
+            else:
+                res.check(f'hist {name}: second press asks the page to redraw (+0x1C)',
+                          [c[:2] for c in sc.calls], [('page_method_1c', PAGE)])
+        res.check(f'hist {name}: our stores only to framebuffer / stack', sc.bad_writes[:5], [])
+    # no histogram object: nothing drawn, nothing called
+    sc = Screen(pxa, gui, None)
+    sc.e.uc.mem_map(PAGE, 0x10000)
+    before = sc.e.read(FB, 320 * 240 * 3)
+    sc.call(0x46C54, PAGE, ord('u'))
+    res.check('hist: no histogram object -> screen unchanged, no calls',
+              (sc.e.read(FB, 320 * 240 * 3) == before, sc.calls), (True, []))
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
     verbose = '-v' in sys.argv
@@ -218,6 +285,8 @@ def main():
     first = vt_hist or vt_stats
     others = [k for k in range(256) if k not in (ord('i'), ord('s')) and key(first, k) != (first, [])]
     res.check('every other key ignored', others, [])
+    if STAGE == 9:
+        hist_overlay(res, pxa, gui, jpg, out, verbose)
     print(f'{res.ok} passed, {res.bad} failed; PNGs in {out}')
     sys.exit(1 if res.bad else 0)
 
@@ -227,7 +296,7 @@ def symbols():
     import subprocess, tempfile
     with tempfile.TemporaryDirectory() as t:
         obj = os.path.join(t, 'o.o')
-        subprocess.run(['clang', *m8_asm.FLAGS, SRC, '-o', obj], check=True)
+        subprocess.run(['clang', *m8_asm.FLAGS, '-I', os.path.dirname(SRC), SRC, '-o', obj], check=True)
         nm = subprocess.run(['xcrun', 'llvm-nm', obj], capture_output=True, text=True, check=True).stdout
     return {n: int(v, 16) for v, t_, n in (l.split() for l in nm.splitlines() if len(l.split()) == 3)
             if t_ in 'tT'}

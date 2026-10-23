@@ -9,7 +9,8 @@ named `.RAW`; Lightroom opens the `.RAW` as is. Stage 5 (`.DNG` names) worked in
 in-camera review (shows the DNG filename, can't reach the JPG), so it was rolled back.
 Rollback chain: stage 1 / `firmware/patched/m8-2_014.upd` / stock.
 On the author's camera since 2026-10-23: **stage 8** (`32e6854e…` = stage 4 + INFO shows Camera stats;
-camera-tested; FINDINGS "GUI"). Roll back to stage 4. Public Option 2 (`m8patch.py dng`) stays stage 4.
+camera-tested; FINDINGS "GUI"). Next to flash: **stage 9** (`2464d5b2…` = stage 8 + UP/DOWN full-screen
+histogram on the playback histogram page). Roll back to stage 8 or 4. Public Option 2 (`m8patch.py dng`) stays stage 4.
 Owner's decision 2026-10-23: no histogram on INFO (PLAY has one); INFO = Camera stats only.
 
 Read `docs/FINDINGS.md` first — it holds every address, offset, hash and conclusion so far.
@@ -25,11 +26,11 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
 - `tools/m8_rawpatch.py` — `python3 tools/m8_rawpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014.upd`
 - `tools/m8_emutest.py` — Unicorn test of the RAW patch (~1 s): `work/venv/bin/python tools/m8_emutest.py [-v]`
 - `tools/m8_dngpatch.py` — staged DNG builds: `work/venv/bin/python tools/m8_dngpatch.py firmware/stock/m8-2_014.upd firmware/patched/m8-2_014-stageN.upd --stage N`
-- `tools/m8_infotest.py` — INFO builds (stages 6-8) vs stage 4: real key handler, all keys and GUI states (~10 s):
+- `tools/m8_infotest.py` — INFO builds (stages 6-9) vs stage 4: real key handler, all keys and GUI states (~10 s):
   `work/venv/bin/python tools/m8_infotest.py [-v]`
-- `tools/m8_inforender.py` — INFO screens (stage 8, or `--stage 7`): runs the real GUI paint code, writes PNGs + checks (~2 s):
+- `tools/m8_inforender.py` — INFO screens (stage 8; `--stage 7`/`9`): runs the real GUI paint code, writes PNGs + checks (~2-15 s):
   `work/venv/bin/python tools/m8_inforender.py [image.JPG] [--stage 7|8] [--out DIR] [-v]`
-- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`, `m8_info.s`, `m8_infoscreens.s`, `m8_infostats.s`); `tools/m8_asm.py X.s`
+- `tools/asm/` — assembly sources of the new code (`m8_header.s`, `m8_dnghook.s`, `m8_info.s`, `m8_infoscreens.s`, `m8_infostats.s`, `m8_infohist.s`); `tools/m8_asm.py X.s`
   assembles one and prints bytes + SHA-256 (the patch script carries the frozen bytes).
 - `tools/m8_savetest.py` — emulated RAW save path, tests every built stage against the camera samples
   (M4 Max: ~9 min all stages, ~3.5 min `--quick`, ~2.5 min `--stage N`):
@@ -67,8 +68,9 @@ For Goal 2, read `docs/DNG_PLAN.md` — the agreed approach, tag list, constrain
   - Before any new flash: rollback drill done once (patched → stock → patched), full battery,
     scratch card for shooting, separate recovery card holding only the stock .upd.
 - INFO / GUI work (stage 6+, FINDINGS "GUI"): same rules as DNG work, plus
-  - Hook only the application key handler's INFO case outside service mode (0x44F68); service mode
-    and the `lensinfo` case stay stock. New code runs only when INFO is pressed, never at startup.
+  - Hooks: the application key handler's INFO case outside service mode (0x44F68; service mode and
+    the `lensinfo` case stay stock) and, from stage 9, the playback info page's ignored UP/DOWN
+    table words (0x46C98, 0x46CDC). New code runs only on those key presses, never at startup.
   - New code may call only existing GUI routines with the arguments the firmware itself uses for the
     same page (drawing: fill / line / text routines, FINDINGS "GUI"), and may write only: the GUI flag
     bytes the firmware's own path writes (app+0x2548F, camInfoMenu+0x99), the borrowed dialog's

@@ -16,6 +16,7 @@ stage. Stages are not cumulative: each is a complete build, one flash per stage.
   7      stage 4 + screens, screens key  INFO screens: histogram, stats        camera-tested 2026-10-23:
                                          histogram stayed on the first shot; replaced by stage 8
   8      stage 4 + stats, stats key      INFO shows Camera stats               camera-tested 2026-10-23
+  9      stage 8 + full-screen histogram (stats+hist, hist key d/u)            in progress
 
 Pieces (each in one declared region, REGIONS):
   canary  0x3CEA0 mov r0,#7 -> #0xA5: RAW header u16[3] = 0xA5
@@ -34,6 +35,10 @@ Pieces (each in one declared region, REGIONS):
   stats   0x2ABD0-0x2B338 bf_memtest1 + the 2 helpers only bf_memtest2 calls + bf_memtest2 ->
           stubs at both entries + Camera stats screen (tools/asm/m8_infostats.s), rest undefined fill
   stats key    as info key, to the stats screen's info_open (also 0x2ABD8)
+  stats+hist   0x2ABD0-0x2B6E8 (as screens): stage 8's bytes + full-screen histogram (tools/asm/
+          m8_infohist.s, entry 0x2B0E8) around the four kept command stubs, rest undefined fill
+  hist key d/u 0x46C98 / 0x46CDC: playback info page key table words for 'd' / 'u', 0x46D04 (ignored)
+          -> 0x2B0E8
 
 Assembled bytes are frozen here with their SHA-256; m8_savetest.py reassembles the sources and
 fails if they no longer match.
@@ -71,6 +76,8 @@ REGIONS = {
     'infokey': (0x44F68, 0x44F6C),  # application key handler, INFO outside service mode (bne 0x44F8C)
     'bfmem':  (0x2ABD0, 0x2B6E8),   # bf_memtest1/2/3, bf_checktrans + 2 helpers only bf_memtest2 calls
     'memtest12': (0x2ABD0, 0x2B338),  # bf_memtest1, the 2 helpers only bf_memtest2 calls, bf_memtest2
+    'pagekey_d': (0x46C98, 0x46C9C),  # playback info page key table, 'd' (stock 0x46D04 = ignored)
+    'pagekey_u': (0x46CDC, 0x46CE0),  # playback info page key table, 'u' (stock 0x46D04 = ignored)
 }
 
 # tools/asm/m8_header.s at 0x3CE48 (46 instructions, replaces the stock block of the same size)
@@ -208,6 +215,68 @@ STATS_CODE_SHA = '34a2ad9e6b0bca186aa853663f2816afd67b9fdea79f13e6970d9f1bfbb660
 STATS_ENTRY = 0x2ABD8                      # info_open
 MEMTEST2_STOCK_SHA = 'c878ef6084a0127cd4c6277b0e87b71c7def6a19d480cd8389a667dede319907'
 
+# tools/asm/m8_infohist.s at 0x2ABD0 (stage 8's bytes + full-screen histogram; stubs at all four entries)
+HIST_CODE = bytes.fromhex(
+    '0000a0e31eff2fe16f0c84e26c0080e20110a0e30fe0a0e19cf39fe5953b84e20120a0e38f20c3e56f0c84e26c0080e2'
+    '0030a0e39930c0e54e0f80e29b1f8fe2001080e50110a0e30fe0a0e16cf39fe56cf39fe5ff1001e2690051e373005113'
+    '1eff2f115c239fe5002080e57310a0e354f39fe510402de910d04de200208de52348a0e108408de50338a0e12338a0e1'
+    '04308de5052d60e21e30a0e30fe0a0e128f39fe510d08de21080bde8f0402de90040a0e10150a0e10260a0e10370a0e1'
+    '0200a0e12318a0e10fe0a0e100f39fe5000044e00510a0e10620a0e10730a0e10fe0a0e1e2ffffeaf080bde804e02de5'
+    '04d04de2dcc29fe500c08de50000a0e30010a0e3052da0e31930a0e30fe0a0e1c4f29fe504d08de20800a0e30410a0e3'
+    '1e2e8fe2b4329fe50fe0a0e1d0ffffea0800a0e3da10a0e3a4229fe5a4329fe50fe0a0e1caffffea04f09de470402de9'
+    '30d04de20040a0e18c029fe5000090e5050a80e2c00080e2b01084e20fe0a0e178f29fe5000050e30600000a0800a0e3'
+    '6410a0e368229fe568329fe50fe0a0e1b7ffffea310000eac8608fe22850a0e3002096e5022086e00c00a0e30510a0e1'
+    '44329fe50fe0a0e1adffffea083096e50328a0e12228a0e1022084e0010813e3002092050020d215020813e30400000a'
+    '040052e30520a083a8108fe2022191e7022081e0041096e5011086e00d00a0e10fe0a0e1f4f19fe54d0fa0e3021045e2'
+    '0d20a0e1dc319fe50fe0a0e1a2ffffea0c6086e2225085e2b00055e3dbffff3a0c00a0e30510a0e1c4219fe5b8319fe5'
+    '0fe0a0e18affffea4d0fa0e3021045e2462f8fe29c319fe50fe0a0e192ffffea30d08de27080bde8d500000015010000'
+    'e4000000d50000000c010000c8000200d100000003010000c4000000d1000000f1000000dd000100f2000000f8000000'
+    '050100000a010000160100001b0100004cd30c0054d30c005cd30c0064d30c00d0a809006c1e0d00b41e0d007ca40900'
+    '6cd30c00ac050600f0a8090024ac0200d8ac090068ad09006cad09006003040070d30c0074d30c00bcac02001cad0200'
+    '000000000000000043616d65726120737461747300494e464f202f205345543a20636c6f736500426f64792064617461'
+    '20756e617661696c61626c650053686f74732074616b656e00426174746572790054656d7065726174757265004c656e'
+    '7320636f6465004669726d7761726500322e303134202b20494e464f00256400257300256420c2b04300456d70747900'
+    '416c6d6f737420656d7074790048616c6600416c6d6f73742066756c6c0046756c6c00556e6b6e6f776e0000e88f0500'
+    '600304008c4f0400b8d10e0068180600ec9609000c9c090045290000408a0900ffff0300e5ae02006d6b03001c420d00'
+    '38e20300f7ae0200ffff0400b2940300ec940b0037af0200000000000000000000000000000000000000000000000000'
+    '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    '0000a0e31eff2fe1f00f2de940d04de220059fe5000090e5001090e50fe0a0e114f091e50010d0e50120d0e50230d0e5'
+    '021481e1031881e1fc249fe5020051e10e00001a0f0d80e2030040e20010d0e50120d0e50230d0e5021481e1031881e1'
+    'd4249fe5020051e10400001a0500a0e1003095e50fe0a0e11cf093e5b30000ea110c85e2284090e5000054e3af00000a'
+    'a8049fe5000090e5b210d0e1a0249fe5020051e1b010d0015020a0e3910220e0bc62d0e1030056e30060a0830000a0e3'
+    '0010a0e3052da0e3f030a0e300c0a0e30fe0a0e1ce0000ea0000a0e30010a0e3052da0e31930a0e358c49fe50fe0a0e1'
+    'c70000ea0000a0e30010a0e30120a0e30130a0e340c49fe50fe0a0e1c00000ea38049fe50010a0e30120a0e30130a0e3'
+    '24c49fe50fe0a0e1b90000ea20249fe5020056e31c249f350800a0e30410a0e314349fe50fe0a0e185feffea0c249fe5'
+    '0800a0e3da10a0e304349fe50fe0a0e17ffeffea1f00a0e32710a0e3012ca0e3022082e29830a0e3e8c39fe50fe0a0e1'
+    'a30000ea2000a0e32810a0e3012ca0e39630a0e300c0a0e30fe0a0e19c0000ea020056e3107084320180a033017b8422'
+    '107087220380a0230190a0e300a0a0e30a0587e00110a0e3012190e7090052e10290a081011081e2ff0051e3f9ffff3a'
+    '01a08ae208005ae1f4ffff3a020056e30d00002a00a0a0e30a0197e70fe0a0e1550000ea0020a0e1be1060e220008ae2'
+    '54339fe50fe0a0e1840000ea01a08ae2010c5ae3f3ffff3a090000ea00b0a0e30b8587e034039fe50b0190e700008de5'
+    '0fe0a0e1810000ea01b08be203005be3f6ffff3a010000ea0000a0e31eff2fe1010016e33900000a020056e30180a033'
+    '0380a023100084e2020056e3010b8422100080220010a0e30020a0e3023190e7031081e0012082e2010c52e3faffff3a'
+    '000051e32900000a0190a0e100a0a0e300b0a0e30020a0e3020587e0003090e50a0053e103a0a081fc3390e50b0053e1'
+    '03b0a081012082e2080052e1f5ffff3a0a00a0e10fe0a0e1240000ea00a0a0e10b00a0e10fe0a0e1200000ea00b0a0e1'
+    '6c129fe50a20a0e10fe0a0e1310000ea0800a0e3c410a0e308208de238329fe50fe0a0e10efeffea48129fe50b20a0e1'
+    '0fe0a0e1270000ea4e0fa0e3c410a0e308208de210329fe50fe0a0e112feffea40d08de2f00fbde81cf29fe504e02de5'
+    '9610a0e3910000e00910a0e10fe0a0e108f29fe5960050e39600a08304f09de404e02de5fa1fa0e3910000e00910a0e1'
+    '0fe0a0e1e4f19fe504f09de4000000000000000000000000000000000000000000000000000000000000000000000000'
+    '000000000000000000000000000000000000a0e31eff2fe130402de90140a0e10250a0e10200a0e10a10a0e30fe0a0e1'
+    '88f19fe50020a0e1003180e0833045e014008de20410a0e10fe0a0e170f19fe53080bde804e02de504d04de200c08de5'
+    '0fe0a0e15cf19fe504d08de204f09de404e02de504d04de200c0a0e300c08de50fe0a0e140f19fe504d08de204f09de4'
+    'f0402de914709de5000098e50fe0a0e1bdffffea0050a0e10060a0e3060198e70fe0a0e1b8ffffea0040a0e1050054e1'
+    '0410a0210520a0210510a0310420a031022041e0012082e2be1061e2be0051e3bd10a0230120a023200086e20730a0e1'
+    '0fe0a0e1ddffffea0450a0e1016086e2010c56e3e8ffff3af080bde8e7e10000473e0000df530000486973746f677261'
+    '6d3a206272696768746e65737300486973746f6772616d3a20522c20472c2042005550202f20444f574e3a206261636b'
+    '00536861646f77732025642e256420252500486967686c69676874732025642e256420252500000088f9170008040800'
+    '30420d00ffff000045290000210800003f010000ceb50200b8b50200ffff0300e1b502006d6b030065290000f39c0000'
+    'acb50200f1b5020002b60200046d040028ab0c00ec940b00408a0900348c0900')
+HIST_CODE_SHA = 'd1e9b5adb6f53b7a4d88f041fe84d76f749ce94bd8034be2b690196190d2c5e2'
+HIST_ENTRY = 0x2B0E8                       # hist_key (playback page, UP / DOWN)
+
 
 def template():
     t, slots = m8_wrapdng.build_template(m8_wrapdng.BLACK)
@@ -281,6 +350,15 @@ def memtest12_blob():
     return STATS_CODE + UDF * ((hi - lo - len(STATS_CODE)) // 4)
 
 
+def hist_blob():
+    if hashlib.sha256(HIST_CODE).hexdigest() != HIST_CODE_SHA:
+        raise SystemExit('HIST_CODE does not match its SHA-256')
+    lo, hi = REGIONS['bfmem']
+    if len(HIST_CODE) > hi - lo:
+        raise SystemExit(f'bfmem overflow: {len(HIST_CODE)} > {hi - lo} bytes')
+    return HIST_CODE + UDF * ((hi - lo - len(HIST_CODE)) // 4)
+
+
 def bl(src, dst):
     return struct.pack('<I', 0xEB000000 | (((dst - src - 8) >> 2) & 0xFFFFFF))
 
@@ -307,6 +385,9 @@ def pieces():
         'screens key': ('infokey', 0x44F68, bytes.fromhex('0700001a'), bne(0x44F68, SCREENS_ENTRY)),
         'stats': ('memtest12', REGIONS['memtest12'][0], MEMTEST2_STOCK_SHA, memtest12_blob()),
         'stats key': ('infokey', 0x44F68, bytes.fromhex('0700001a'), bne(0x44F68, STATS_ENTRY)),
+        'stats+hist': ('bfmem', REGIONS['bfmem'][0], BFMEM_STOCK_SHA, hist_blob()),
+        'hist key d': ('pagekey_d', 0x46C98, struct.pack('<I', 0x46D04), struct.pack('<I', HIST_ENTRY)),
+        'hist key u': ('pagekey_u', 0x46CDC, struct.pack('<I', 0x46D04), struct.pack('<I', HIST_ENTRY)),
     }
 
 
@@ -321,6 +402,8 @@ STAGES = {
     7: ('as stage 4, plus INFO screens: Last shot (histogram), Camera stats',
         ['tiff', 'ldimg', 'hook', 'screens', 'screens key']),
     8: ('as stage 4, plus INFO shows Camera stats', ['tiff', 'ldimg', 'hook', 'stats', 'stats key']),
+    9: ('as stage 8, plus UP / DOWN on the playback histogram page: full-screen histogram',
+        ['tiff', 'ldimg', 'hook', 'stats+hist', 'stats key', 'hist key d', 'hist key u']),
 }
 KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
     '3f84b34a225aeebe3f5f18cb658d4b14028d49d98e1fd1d1366ccf25a5830e66':
@@ -342,6 +425,8 @@ KNOWN_OUTPUTS = {  # stage builds whose emulator run passed (see FINDINGS)
         'histogram showed the first shot after later shots (review buffer); replaced by stage 8',
     '32e6854ec0bc451667ef4f8f6b40dfb4c8af406a43db84e94b90abeb380408f8':
         'stage 8, INFO -> Camera stats; m8_infotest 38/0, m8_inforender 7/0, m8_savetest 49/0; flashed and camera-tested 2026-10-23',
+    '2464d5b20edc1fdd307f1bfa8b5820d1e3f8c645c5e6ac75a6eaf1a45ad466f3':
+        'stage 9, stage 8 + full-screen histogram; m8_infotest 50/0, m8_inforender 32/0, m8_savetest 49/0 (2026-10-23); not flashed',
 }
 
 
